@@ -1,0 +1,18 @@
+<use   name="DataFormats/CSCRecHit"/>
+<use   name="DataFormats/DTRecHit"/>
+<use   name="DataFormats/GEMRecHit"/>
+<use   name="DataFormats/MuonDetId"/>
+<use   name="DataFormats/MuonReco"/>
+<use   name="FWCore/Framework"/>
+<use   name="FWCore/MessageLogger"/>
+<use   name="FWCore/ParameterSet"/>
+<use   name="FWCore/ServiceRegistry"/>
+<use   name="DQMServices/Core"/>
+<use   name="Geometry/CSCGeometry"/>
+<use   name="Geometry/GEMGeometry"/>
+<use   name="Geometry/CommonDetUnit"/>
+<use   name="Geometry/Records"/>
+<lib   name="MathMore"/>
+<library   file="*.cc" name="ValidationMuonIdentificationPlugins">
+  <flags   EDM_PLUGIN="1"/>
+</library>

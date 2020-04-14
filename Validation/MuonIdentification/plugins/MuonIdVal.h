@@ -25,6 +25,7 @@
 // user include files
 #include "DataFormats/CSCRecHit/interface/CSCSegmentCollection.h"
 #include "DataFormats/DTRecHit/interface/DTRecSegment4DCollection.h"
+#include "DataFormats/GEMRecHit/interface/GEMSegmentCollection.h"
 #include "DataFormats/MuonDetId/interface/CSCDetId.h"
 #include "DataFormats/MuonDetId/interface/DTChamberId.h"
 #include "DataFormats/MuonDetId/interface/MuonSubdetId.h"
@@ -42,7 +43,6 @@
 #include "FWCore/Framework/interface/ESHandle.h"
 #include "FWCore/Framework/interface/Event.h"
 #include "FWCore/Framework/interface/Frameworkfwd.h"
-#include "FWCore/Framework/interface/MakerMacros.h"
 #include "FWCore/MessageLogger/interface/MessageLogger.h"
 #include "FWCore/ParameterSet/interface/ParameterSet.h"
 #include "FWCore/ServiceRegistry/interface/Service.h"
@@ -50,6 +50,7 @@
 #include "DQMServices/Core/interface/DQMEDAnalyzer.h"
 #include "DQMServices/Core/interface/DQMStore.h"
 #include "Geometry/CSCGeometry/interface/CSCGeometry.h"
+#include "Geometry/GEMGeometry/interface/GEMGeometry.h"
 #include "Geometry/CommonDetUnit/interface/GlobalTrackingGeometry.h"
 #include "Geometry/Records/interface/GlobalTrackingGeometryRecord.h"
 
@@ -64,6 +65,16 @@ private:
   void analyze(const edm::Event &, const edm::EventSetup &) override;
   virtual void Fill(MonitorElement *, float);
 
+  template <class TSegmentCollectionConstIterator>
+  bool matchSegment(TSegmentCollectionConstIterator,
+                    const reco::MuonSegmentMatch &);
+
+
+  template <class TSegmentCollectionHandle>
+  void fillSegmentPosition2D(const TSegmentCollectionHandle &,
+                       const edm::Handle<reco::MuonCollection> &,
+                       const edm::ESHandle<GlobalTrackingGeometry> &);
+
   edm::ParameterSet iConfig;
   edm::ParameterSet parameters_;
   std::string eventInfoFolder_;
@@ -73,12 +84,14 @@ private:
   edm::InputTag inputMuonCollection_;
   edm::InputTag inputDTRecSegment4DCollection_;
   edm::InputTag inputCSCSegmentCollection_;
+  edm::InputTag inputGEMSegmentCollection_;
   edm::InputTag inputMuonTimeExtraValueMap_;
   edm::InputTag inputMuonCosmicCompatibilityValueMap_;
   edm::InputTag inputMuonShowerInformationValueMap_;
   edm::EDGetTokenT<reco::MuonCollection> inputMuonCollectionToken_;
   edm::EDGetTokenT<DTRecSegment4DCollection> inputDTRecSegment4DCollectionToken_;
   edm::EDGetTokenT<CSCSegmentCollection> inputCSCSegmentCollectionToken_;
+  edm::EDGetTokenT<GEMSegmentCollection> inputGEMSegmentCollectionToken_;
   edm::EDGetTokenT<reco::MuonTimeExtraMap> inputMuonTimeExtraValueMapCombToken_;
   edm::EDGetTokenT<reco::MuonTimeExtraMap> inputMuonTimeExtraValueMapDTToken_;
   edm::EDGetTokenT<reco::MuonTimeExtraMap> inputMuonTimeExtraValueMapCSCToken_;
@@ -88,6 +101,7 @@ private:
   bool useGlobalMuons_;
   bool useTrackerMuonsNotGlobalMuons_;
   bool useGlobalMuonsNotTrackerMuons_;
+  bool useGEM_;
   bool makeEnergyPlots_;
   bool makeTimePlots_;
   bool make2DPlots_;
@@ -99,6 +113,7 @@ private:
   edm::Handle<reco::MuonCollection> muonCollectionH_;
   edm::Handle<DTRecSegment4DCollection> dtSegmentCollectionH_;
   edm::Handle<CSCSegmentCollection> cscSegmentCollectionH_;
+  edm::Handle<GEMSegmentCollection> gemSegmentCollectionH_;
   edm::Handle<reco::MuonTimeExtraMap> combinedMuonTimeExtraValueMapH_;
   edm::Handle<reco::MuonTimeExtraMap> cscMuonTimeExtraValueMapH_;
   edm::Handle<reco::MuonTimeExtraMap> dtMuonTimeExtraValueMapH_;
@@ -185,6 +200,7 @@ private:
   MonitorElement *hDTDistWithNoSegment[4][4];
   MonitorElement *hDTPullDistWithSegment[4][4];
   MonitorElement *hDTPullDistWithNoSegment[4][4];
+
   MonitorElement *hCSCPullxPropErr[4][4];
   MonitorElement *hCSCPulldXdZPropErr[4][4];
   MonitorElement *hCSCPullyPropErr[4][4];
@@ -194,21 +210,41 @@ private:
   MonitorElement *hCSCPullDistWithSegment[4][4];
   MonitorElement *hCSCPullDistWithNoSegment[4][4];
 
+  // key: (muon_type_idx, station)
+  std::map<std::tuple<int, int>, MonitorElement *> hGEMPullxPropErr;
+  std::map<std::tuple<int, int>, MonitorElement *> hGEMPulldXdZPropErr;
+  std::map<std::tuple<int, int>, MonitorElement *> hGEMPullyPropErr;
+  std::map<std::tuple<int, int>, MonitorElement *> hGEMPulldYdZPropErr;
+  std::map<std::tuple<int, int>, MonitorElement *> hGEMDistWithSegment;
+  std::map<std::tuple<int, int>, MonitorElement *> hGEMDistWithNoSegment;
+  std::map<std::tuple<int, int>, MonitorElement *> hGEMPullDistWithSegment;
+  std::map<std::tuple<int, int>, MonitorElement *> hGEMPullDistWithNoSegment;
+
   // by chamber, trackerMuons only
   // DT:  [station][wheel][sector]
   // CSC: [endcap][station][ring][chamber]
+  // GEM: [region][station][chamber]
   MonitorElement *hDTChamberDx[4][5][14];
   MonitorElement *hDTChamberDy[3][5][14];
   MonitorElement *hDTChamberEdgeXWithSegment[4][5][14];
   MonitorElement *hDTChamberEdgeXWithNoSegment[4][5][14];
   MonitorElement *hDTChamberEdgeYWithSegment[4][5][14];
   MonitorElement *hDTChamberEdgeYWithNoSegment[4][5][14];
+
   MonitorElement *hCSCChamberDx[2][4][4][36];
   MonitorElement *hCSCChamberDy[2][4][4][36];
   MonitorElement *hCSCChamberEdgeXWithSegment[2][4][4][36];
   MonitorElement *hCSCChamberEdgeXWithNoSegment[2][4][4][36];
   MonitorElement *hCSCChamberEdgeYWithSegment[2][4][4][36];
   MonitorElement *hCSCChamberEdgeYWithNoSegment[2][4][4][36];
+
+  // key is (region, station, chamber)
+  std::map<std::tuple<int, int, int>, MonitorElement *> hGEMChamberDx;
+  std::map<std::tuple<int, int, int>, MonitorElement *> hGEMChamberDy;
+  std::map<std::tuple<int, int, int>, MonitorElement *> hGEMChamberEdgeXWithSegment;
+  std::map<std::tuple<int, int, int>, MonitorElement *> hGEMChamberEdgeXWithNoSegment;
+  std::map<std::tuple<int, int, int>, MonitorElement *> hGEMChamberEdgeYWithSegment;
+  std::map<std::tuple<int, int, int>, MonitorElement *> hGEMChamberEdgeYWithNoSegment;
 
   // segment matching "efficiency"
   MonitorElement *hSegmentIsAssociatedRZ;
@@ -220,5 +256,79 @@ private:
   MonitorElement *hSegmentIsBestDrNotAssociatedRZ;
   MonitorElement *hSegmentIsBestDrNotAssociatedXY;
 };
+
+
+template <class TSegmentCollectionConstIterato>
+bool MuonIdVal::matchSegment(TSegmentCollectionConstIterato segment,
+                             const reco::MuonSegmentMatch & segmentMatch) {
+  LocalPoint segmentLocalPosition = segment->localPosition();
+  LocalVector segmentLocalDirection = segment->localDirection();
+  LocalError segmentLocalPositionError = segment->localPositionError();
+  LocalError segmentLocalDirectionError = segment->localDirectionError();
+
+  if (fabs(segmentMatch.x - segmentLocalPosition.x()) > 1E-6) return false;
+  if (fabs(segmentMatch.y - segmentLocalPosition.y()) > 1E-6) return false;
+  if (fabs(segmentMatch.dXdZ - segmentLocalDirection.x() / segmentLocalDirection.z()) > 1E-6) return false;
+  if (fabs(segmentMatch.dYdZ - segmentLocalDirection.y() / segmentLocalDirection.z()) > 1E-6) return false;
+  if (fabs(segmentMatch.xErr - sqrt(segmentLocalPositionError.xx())) > 1E-6) return false;
+  if (fabs(segmentMatch.yErr - sqrt(segmentLocalPositionError.yy())) > 1E-6) return false;
+  if (fabs(segmentMatch.dXdZErr - sqrt(segmentLocalDirectionError.xx())) > 1E-6) return false;
+  if (fabs(segmentMatch.dYdZErr - sqrt(segmentLocalDirectionError.yy())) > 1E-6) return false;
+
+  return true;
+}
+
+
+template <class TSegmentCollectionHandle>
+void MuonIdVal::fillSegmentPosition2D(const TSegmentCollectionHandle & segment_collection,
+                                      const edm::Handle<reco::MuonCollection> & muon_collection,
+                                      const edm::ESHandle<GlobalTrackingGeometry> & geometry) {
+                                
+  for (auto segment = segment_collection->begin(); segment != segment_collection->end(); ++segment) {
+    const GeomDet *geom_det = geometry->idToDet(segment->geographicalId());
+    GlobalPoint segmentGlobalPosition = geom_det->toGlobal(segment->localPosition());
+
+    bool segmentFound = false;
+    bool segmentBestDrFound = false;
+    for (auto muon = muon_collection->begin(); muon != muon_collection->end(); ++muon) {
+      if (not muon->isMatchesValid())
+        continue;
+
+      for (const auto & chamberMatch : muon->matches()) {
+        for (const auto & segmentMatch : chamberMatch.segmentMatches) {
+          if (matchSegment(segment, segmentMatch)) {
+            segmentFound = true;
+            if (segmentMatch.isMask(reco::MuonSegmentMatch::BestInStationByDR))
+              segmentBestDrFound = true;
+            break;
+          }
+        }  // segmentMatch
+
+        if (segmentFound)
+          break;
+      }  // chamberMatch
+
+      if (segmentFound)
+        break;
+    }  // muon
+
+    if (segmentFound) {
+      hSegmentIsAssociatedRZ->Fill(segmentGlobalPosition.z(), segmentGlobalPosition.perp());
+      hSegmentIsAssociatedXY->Fill(segmentGlobalPosition.x(), segmentGlobalPosition.y());
+
+      if (segmentBestDrFound) {
+        hSegmentIsBestDrAssociatedRZ->Fill(segmentGlobalPosition.z(), segmentGlobalPosition.perp());
+        hSegmentIsBestDrAssociatedXY->Fill(segmentGlobalPosition.x(), segmentGlobalPosition.y());
+      }
+    } else {
+      hSegmentIsNotAssociatedRZ->Fill(segmentGlobalPosition.z(), segmentGlobalPosition.perp());
+      hSegmentIsNotAssociatedXY->Fill(segmentGlobalPosition.x(), segmentGlobalPosition.y());
+      hSegmentIsBestDrNotAssociatedRZ->Fill(segmentGlobalPosition.z(), segmentGlobalPosition.perp());
+      hSegmentIsBestDrNotAssociatedXY->Fill(segmentGlobalPosition.x(), segmentGlobalPosition.y());
+    }
+  }  // gem segment
+
+}
+
 
 #endif

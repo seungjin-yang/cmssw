@@ -1,4 +1,4 @@
-#include "Validation/MuonIdentification/interface/MuonIdVal.h"
+#include "Validation/MuonIdentification/plugins/MuonIdVal.h"
 
 MuonIdVal::MuonIdVal(const edm::ParameterSet &ps) {
   iConfig = ps;
@@ -8,40 +8,49 @@ MuonIdVal::MuonIdVal(const edm::ParameterSet &ps) {
   inputMuonTimeExtraValueMap_ = iConfig.getParameter<edm::InputTag>("inputMuonTimeExtraValueMap");
   inputMuonCosmicCompatibilityValueMap_ = iConfig.getParameter<edm::InputTag>("inputMuonCosmicCompatibilityValueMap");
   inputMuonShowerInformationValueMap_ = iConfig.getParameter<edm::InputTag>("inputMuonShowerInformationValueMap");
+
   useTrackerMuons_ = iConfig.getUntrackedParameter<bool>("useTrackerMuons");
   useGlobalMuons_ = iConfig.getUntrackedParameter<bool>("useGlobalMuons");
   useTrackerMuonsNotGlobalMuons_ = iConfig.getUntrackedParameter<bool>("useTrackerMuonsNotGlobalMuons");
   useGlobalMuonsNotTrackerMuons_ = iConfig.getUntrackedParameter<bool>("useGlobalMuonsNotTrackerMuons");
+
   makeEnergyPlots_ = iConfig.getUntrackedParameter<bool>("makeEnergyPlots");
   makeTimePlots_ = iConfig.getUntrackedParameter<bool>("makeTimePlots");
   make2DPlots_ = iConfig.getUntrackedParameter<bool>("make2DPlots");
   makeAllChamberPlots_ = iConfig.getUntrackedParameter<bool>("makeAllChamberPlots");
   makeCosmicCompatibilityPlots_ = iConfig.getUntrackedParameter<bool>("makeCosmicCompatibilityPlots");
   makeShowerInformationPlots_ = iConfig.getUntrackedParameter<bool>("makeShowerInformationPlots");
+
   baseFolder_ = iConfig.getUntrackedParameter<std::string>("baseFolder");
 
   inputMuonCollectionToken_ = consumes<reco::MuonCollection>(inputMuonCollection_);
   inputDTRecSegment4DCollectionToken_ = consumes<DTRecSegment4DCollection>(inputDTRecSegment4DCollection_);
   inputCSCSegmentCollectionToken_ = consumes<CSCSegmentCollection>(inputCSCSegmentCollection_);
-  inputMuonTimeExtraValueMapCombToken_ =
-      consumes<reco::MuonTimeExtraMap>(edm::InputTag(inputMuonTimeExtraValueMap_.label(), "combined"));
-  inputMuonTimeExtraValueMapDTToken_ =
-      consumes<reco::MuonTimeExtraMap>(edm::InputTag(inputMuonTimeExtraValueMap_.label(), "csc"));
-  inputMuonTimeExtraValueMapCSCToken_ =
-      consumes<reco::MuonTimeExtraMap>(edm::InputTag(inputMuonTimeExtraValueMap_.label(), "dt"));
-  inputMuonCosmicCompatibilityValueMapToken_ =
-      consumes<edm::ValueMap<reco::MuonCosmicCompatibility>>(inputMuonCosmicCompatibilityValueMap_);
-  inputMuonShowerInformationValueMapToken_ =
-      consumes<edm::ValueMap<reco::MuonShower>>(inputMuonShowerInformationValueMap_);
+  inputMuonTimeExtraValueMapCombToken_ = consumes<reco::MuonTimeExtraMap>(edm::InputTag(inputMuonTimeExtraValueMap_.label(), "combined"));
+  inputMuonTimeExtraValueMapDTToken_ = consumes<reco::MuonTimeExtraMap>(edm::InputTag(inputMuonTimeExtraValueMap_.label(), "dt"));
+  inputMuonTimeExtraValueMapCSCToken_ = consumes<reco::MuonTimeExtraMap>(edm::InputTag(inputMuonTimeExtraValueMap_.label(), "csc"));
+  inputMuonCosmicCompatibilityValueMapToken_ = consumes<edm::ValueMap<reco::MuonCosmicCompatibility>>(inputMuonCosmicCompatibilityValueMap_);
+  inputMuonShowerInformationValueMapToken_ = consumes<edm::ValueMap<reco::MuonShower>>(inputMuonShowerInformationValueMap_);
+
+  useGEM_ = iConfig.getUntrackedParameter<bool>("useGEM");
+  inputGEMSegmentCollection_ = iConfig.getParameter<edm::InputTag>("inputGEMSegmentCollection");
+  inputGEMSegmentCollectionToken_ = consumes<GEMSegmentCollection>(inputGEMSegmentCollection_);
 
   subsystemname_ = iConfig.getUntrackedParameter<std::string>("subSystemFolder", "YourSubsystem");
 }
 
+
 MuonIdVal::~MuonIdVal() {}
 
-void MuonIdVal::bookHistograms(DQMStore::IBooker &ibooker, const edm::Run &, const edm::EventSetup &) {
+
+void MuonIdVal::bookHistograms(DQMStore::IBooker &ibooker, const edm::Run & run, const edm::EventSetup & iSetup) {
   char name[100], title[200];
   ibooker.setCurrentFolder(baseFolder_);
+
+  edm::ESHandle<GEMGeometry> gem;
+  if (useGEM_) {
+    iSetup.get<MuonGeometryRecord>().get(gem);
+  }
 
   // trackerMuon == 0; globalMuon == 1; trackerMuon && !globalMuon == 2;
   // globalMuon && !trackerMuon == 3
@@ -50,6 +59,7 @@ void MuonIdVal::bookHistograms(DQMStore::IBooker &ibooker, const edm::Run &, con
       continue;
     if ((i == 2 && !useTrackerMuonsNotGlobalMuons_) || (i == 3 && !useGlobalMuonsNotTrackerMuons_))
       continue;
+
     if (i == 0)
       ibooker.setCurrentFolder(baseFolder_ + "/TrackerMuons");
     if (i == 1)
@@ -107,9 +117,12 @@ void MuonIdVal::bookHistograms(DQMStore::IBooker &ibooker, const edm::Run &, con
 
     hCaloCompat[i] = ibooker.book1D("hCaloCompat", "Calo Compatibility", 101, -0.05, 1.05);
     hSegmentCompat[i] = ibooker.book1D("hSegmentCompat", "Segment Compatibility", 101, -0.05, 1.05);
-    if (make2DPlots_)
+
+    if (make2DPlots_) {
       hCaloSegmentCompat[i] = ibooker.book2D(
           "hCaloSegmentCompat", "Calo Compatibility vs. Segment Compatibility", 101, -0.05, 1.05, 101, -0.05, 1.05);
+    }    
+
     hMuonQualityTrkRelChi2[i] = ibooker.book1D("hMuonQualityTrkRelChi2", "MuonQuality TrkRelChi2", 100, 0., 1.5);
     hMuonQualityStaRelChi2[i] = ibooker.book1D("hMuonQualityStaRelChi2", "MuonQuality StaRelChi2", 100, 0., 3.);
     hMuonQualityTrkKink[i] = ibooker.book1D("hMuonQualityTrkKink", "MuonQuality TrkKink", 100, 0., 150.);
@@ -146,8 +159,7 @@ void MuonIdVal::bookHistograms(DQMStore::IBooker &ibooker, const edm::Run &, con
         "hTMLastStationOptimizedBarrelLowPtTightBool", "TMLastStationOptimizedBarrelLowPtTight Boolean", 2, -0.5, 1.5);
 
     if (makeCosmicCompatibilityPlots_) {
-      hCombinedCosmicCompat[i] =
-          ibooker.book1D("hCombinedCosmicCompat", "hCombinedCosmicCompatibility float", 40, 0., 10.);
+      hCombinedCosmicCompat[i] = ibooker.book1D("hCombinedCosmicCompat", "hCombinedCosmicCompatibility float", 40, 0., 10.);
       hTimeCosmicCompat[i] = ibooker.book1D("hTimeCosmicCompat", "hTimeCosmicCompatibility float", 6, 0., 3.);
       hB2BCosmicCompat[i] = ibooker.book1D("hB2BCosmicCompat", "Number of back-to-back partners", 10, 0, 10);
       hOverlapCosmicCompat[i] = ibooker.book1D("hOverlapCosmicCompat", "Overlap between muons and 1Leg", 2, 0, 2);
@@ -159,15 +171,19 @@ void MuonIdVal::bookHistograms(DQMStore::IBooker &ibooker, const edm::Run &, con
         sprintf(name, "hMuonShowerSizeT%i", station + 1);
         sprintf(title, "Station %i Transverse Cluster Size", station + 1);
         hMuonShowerSizeT[i][station] = ibooker.book1D(name, title, 1000, 0, 500);
+
         sprintf(name, "hMuonShowerDeltaR%i", station + 1);
         sprintf(title, "Station %i DeltaR", station + 1);
         hMuonShowerDeltaR[i][station] = ibooker.book1D(name, title, 5000, 0, 0.5);
+
         sprintf(name, "hMuonAllHits%i", station + 1);
         sprintf(title, "Station %i Number of 1D DT or 2D CSC RecHits", station + 1);
         hMuonAllHits[i][station] = ibooker.book1D(name, title, 400, 0, 400);
+
         sprintf(name, "hMuonHitsFromSegments%i", station + 1);
         sprintf(title, "Station %i Hits used by 4D DT or 3D CSC Segments", station + 1);
         hMuonHitsFromSegments[i][station] = ibooker.book1D(name, title, 400, 0, 400);
+
         sprintf(name, "hMuonUncorrelatedHits%i", station + 1);
         sprintf(title, "Station %i Uncorrelated Hits", station + 1);
         hMuonUncorrelatedHits[i][station] = ibooker.book1D(name, title, 400, 0, 400);
@@ -239,10 +255,50 @@ void MuonIdVal::bookHistograms(DQMStore::IBooker &ibooker, const edm::Run &, con
       sprintf(title, "CSC Station %i Pull Dist When There Is No Segment", station + 1);
       hCSCPullDistWithNoSegment[i][station] = ibooker.book1D(name, title, 100, -70., 20.);
     }  // station
-  }
+
+    if (useGEM_) {
+      for (const GEMStation* station : gem->regions().front()->stations()) {
+        int station_id = station->station();
+        std::tuple<int, int> key = {i, station_id};
+
+        sprintf(name, "hGEM%iPullxPropErr", station_id);
+        sprintf(title, "GEM Station %i Pull X w/ Propagation Error Only", station_id);
+        hGEMPullxPropErr[key] = ibooker.book1D(name, title, 100, -20., 20.);
+
+        sprintf(name, "hGEM%iPulldXdZPropErr", station_id);
+        sprintf(title, "GEM Station %i Pull DxDz w/ Propagation Error Only", station_id);
+        hGEMPulldXdZPropErr[key] = ibooker.book1D(name, title, 100, -20., 20.);
+
+        sprintf(name, "hGEM%iPullyPropErr", station_id);
+        sprintf(title, "GEM Station %i Pull Y w/ Propagation Error Only", station_id);
+        hGEMPullyPropErr[key] = ibooker.book1D(name, title, 100, -20., 20.);
+
+        sprintf(name, "hGEM%iPulldYdZPropErr", station_id);
+        sprintf(title, "GEM Station %i Pull DyDz w/ Propagation Error Only", station_id);
+        hGEMPulldYdZPropErr[key] = ibooker.book1D(name, title, 100, -50., 50.);
+
+        sprintf(name, "hGEM%iDistWithSegment", station_id);
+        sprintf(title, "GEM Station %i Dist When There Is A Segment", station_id);
+        hGEMDistWithSegment[key] = ibooker.book1D(name, title, 100, -70., 20.);
+
+        sprintf(name, "hGEM%iDistWithNoSegment", station_id);
+        sprintf(title, "GEM Station %i Dist When There Is No Segment", station_id);
+        hGEMDistWithNoSegment[key] = ibooker.book1D(name, title, 100, -70., 20.);
+
+        sprintf(name, "hGEM%iPullDistWithSegment", station_id);
+        sprintf(title, "GEM Station %i Pull Dist When There Is A Segment", station_id);
+        hGEMPullDistWithSegment[key] = ibooker.book1D(name, title, 100, -70., 20.);
+
+        sprintf(name, "hGEM%iPullDistWithNoSegment", station_id);
+        sprintf(title, "GEM Station %i Pull Dist When There Is No Segment", station_id);
+        hGEMPullDistWithNoSegment[key] = ibooker.book1D(name, title, 100, -70., 20.);
+      } // GEM station
+    } // useGEM_
+  } // muon types
 
   if (make2DPlots_) {
     ibooker.setCurrentFolder(baseFolder_);
+
     hSegmentIsAssociatedRZ =
         ibooker.book2D("hSegmentIsAssociatedRZ", "R-Z of Associated Segments", 2140, -1070., 1070., 850, 0., 850.);
     hSegmentIsAssociatedXY =
@@ -409,6 +465,48 @@ void MuonIdVal::bookHistograms(DQMStore::IBooker &ibooker, const edm::Run &, con
         }    // ring
       }      // endcap
     }        // station
+
+
+    if (useGEM_) {
+      for (const GEMChamber* chamber : gem->chambers()) {
+        const GEMDetId & gem_id = chamber->id();
+        int region_id = gem_id.region();
+        int station_id = gem_id.station();
+        int chamber_id = gem_id.chamber();
+
+        std::tuple<int, int, int> key = {region_id, station_id, chamber_id};
+
+        TString name_suffix = TString::Format("_%i_%i_%i", region_id, station_id, chamber_id);
+        TString title_suffix = TString::Format(": Region %i Station %i Chamber %i", region_id, station_id, chamber_id);
+
+        hGEMChamberDx[key] = ibooker.book1D(
+            "hGEMChamberDx" + name_suffix, "GEM Chamber Delta X" + title_suffix, 100, -50., 50.);
+
+        hGEMChamberDy[key] = ibooker.book1D(
+            "hGEMChamberDy" + name_suffix, "GEM Chamber Delta Y" + title_suffix, 100, -50., 50.);
+
+        hGEMChamberEdgeXWithSegment[key] = ibooker.book1D(
+            "hGEMChamberEdgeXWithSegment" + name_suffix,
+            "GEM Chamber Edge X When There Is A Segment" + title_suffix,
+            100, -70., 20.);
+
+        hGEMChamberEdgeXWithNoSegment[key] = ibooker.book1D(
+            "hGEMChamberEdgeXWithNoSegment" + name_suffix,
+            "GEM Chamber Edge X When There Is No Segment" + title_suffix,
+            100, -70., 20.);
+
+        hGEMChamberEdgeYWithSegment[key] = ibooker.book1D(
+            "hGEMChamberEdgeYWithSegment" + name_suffix,
+            "GEM Chamber Edge Y When There Is A Segment" + title_suffix,
+            100, -70., 20.);
+
+        hGEMChamberEdgeYWithNoSegment[key] = ibooker.book1D(
+            "hGEMChamberEdgeYWithNoSegment" + name_suffix,
+            "GEM Chamber Edge Y When There Is No Segment" + title_suffix,
+            100, -70., 20.);
+
+      } // chamber        
+    } //useGEM
   }
 }
 
@@ -424,6 +522,13 @@ void MuonIdVal::analyze(const edm::Event &iEvent, const edm::EventSetup &iSetup)
   iEvent.getByToken(inputMuonTimeExtraValueMapDTToken_, dtMuonTimeExtraValueMapH_);
   iEvent.getByToken(inputMuonShowerInformationValueMapToken_, muonShowerInformationValueMapH_);
   iEvent.getByToken(inputMuonCosmicCompatibilityValueMapToken_, muonCosmicCompatibilityValueMapH_);
+
+  edm::ESHandle<GEMGeometry> gem;
+  if (useGEM_) {
+    iEvent.getByToken(inputGEMSegmentCollectionToken_, gemSegmentCollectionH_);
+    iSetup.get<MuonGeometryRecord>().get(gem);
+  }
+
 
   iSetup.get<GlobalTrackingGeometryRecord>().get(geometry_);
 
@@ -589,10 +694,43 @@ void MuonIdVal::analyze(const edm::Event &iEvent, const edm::EventSetup &iSetup)
           Fill(hCSCPullDistWithNoSegment[i][station], distance / error);
         }
       }  // station
-    }
 
-    if (!useTrackerMuons_ || !muon->isTrackerMuon())
+
+      if (useGEM_) {
+        for (const GEMStation* station : gem->regions().front()->stations()) {
+          int station_id = station->station();
+          std::tuple<int, int> key = {i, station_id};
+
+          float pull_x = muon->pullX(station_id, MuonSubdetId::GEM, Muon::SegmentAndTrackArbitration, false);
+          float pull_dxdz = muon->pullDxDz(station_id, MuonSubdetId::GEM, Muon::SegmentAndTrackArbitration, false);
+          float pull_y = muon->pullY(station_id, MuonSubdetId::GEM, Muon::SegmentAndTrackArbitration, false);
+          float pull_dydz = muon->pullDyDz(station_id, MuonSubdetId::GEM, Muon::SegmentAndTrackArbitration, false);
+
+          Fill(hGEMPullxPropErr[key], pull_x);
+          Fill(hGEMPulldXdZPropErr[key], pull_dxdz);
+          Fill(hGEMPullyPropErr[key], pull_y);
+          Fill(hGEMPulldYdZPropErr[key], pull_dydz);
+
+          float distance = muon->trackDist(station_id, MuonSubdetId::GEM);
+          float error = muon->trackDistErr(station_id, MuonSubdetId::GEM);
+          if (error == 0.0f)
+            error = 1E-6f;
+          float pull = distance / error;
+
+          if (muon->numberOfSegments(station_id, MuonSubdetId::GEM, Muon::NoArbitration) > 0) {
+            Fill(hGEMDistWithSegment[key], distance);
+            Fill(hGEMPullDistWithSegment[key], pull);
+          } else {
+            Fill(hGEMDistWithNoSegment[key], distance);
+            Fill(hGEMPullDistWithNoSegment[key], pull);
+          }
+        } // GEM station
+      } // useGEM_
+    }  //
+
+    if (not useTrackerMuons_ or not muon->isTrackerMuon())
       continue;
+
     if (makeAllChamberPlots_) {
       // by chamber
       for (std::vector<MuonChamberMatch>::const_iterator chamberMatch = muon->matches().begin();
@@ -624,10 +762,7 @@ void MuonIdVal::analyze(const edm::Event &iEvent, const edm::EventSetup &iSetup)
             }  // segmentMatch
           }
 
-          continue;
-        }
-
-        if (chamberMatch->detector() == MuonSubdetId::CSC) {
+        } else if (chamberMatch->detector() == MuonSubdetId::CSC) {
           CSCDetId cscId(chamberMatch->id.rawId());
           int endcap = cscId.endcap();
           int ring = cscId.ring();
@@ -650,132 +785,41 @@ void MuonIdVal::analyze(const edm::Event &iEvent, const edm::EventSetup &iSetup)
               }
             }  // segmentMatch
           }
+        } else if (useGEM_ and (chamberMatch->detector() == MuonSubdetId::GEM)) {
+          GEMDetId gemId(chamberMatch->id.rawId());
+          std::tuple<int, int, int> key = {gemId.region(), gemId.station(), gemId.chamber()};
+
+          if (chamberMatch->gemMatches.empty()) {
+            Fill(hGEMChamberEdgeXWithNoSegment[key], chamberMatch->edgeX);
+            Fill(hGEMChamberEdgeYWithNoSegment[key], chamberMatch->edgeY);
+          } else {
+            Fill(hGEMChamberEdgeXWithSegment[key], chamberMatch->edgeX);
+            Fill(hGEMChamberEdgeYWithSegment[key], chamberMatch->edgeY);
+
+            for (const MuonSegmentMatch & segmentMatch : chamberMatch->gemMatches) {
+              if (segmentMatch.isMask(MuonSegmentMatch::BestInChamberByDR)) {
+                Fill(hGEMChamberDx[key], chamberMatch->x - segmentMatch.x);
+                Fill(hGEMChamberDy[key], chamberMatch->y - segmentMatch.y);
+                break;
+              }
+            }  // segmentMatch
+          }
+        } else {
+          // skip RPC
+          continue;
         }
       }  // chamberMatch
     }
     ++muonIdx;
   }  // muon
 
-  if (!make2DPlots_)
-    return;
+  if (make2DPlots_) {
+    fillSegmentPosition2D(dtSegmentCollectionH_, muonCollectionH_, geometry_);
+    fillSegmentPosition2D(cscSegmentCollectionH_, muonCollectionH_, geometry_);
+    if (useGEM_)
+      fillSegmentPosition2D(gemSegmentCollectionH_, muonCollectionH_, geometry_);
+  }
 
-  for (DTRecSegment4DCollection::const_iterator segment = dtSegmentCollectionH_->begin();
-       segment != dtSegmentCollectionH_->end();
-       ++segment) {
-    LocalPoint segmentLocalPosition = segment->localPosition();
-    LocalVector segmentLocalDirection = segment->localDirection();
-    LocalError segmentLocalPositionError = segment->localPositionError();
-    LocalError segmentLocalDirectionError = segment->localDirectionError();
-    const GeomDet *segmentGeomDet = geometry_->idToDet(segment->geographicalId());
-    GlobalPoint segmentGlobalPosition = segmentGeomDet->toGlobal(segment->localPosition());
-    bool segmentFound = false;
-    bool segmentBestDrFound = false;
-
-    for (MuonCollection::const_iterator muon = muonCollectionH_->begin(); muon != muonCollectionH_->end(); ++muon) {
-      if (!muon->isMatchesValid())
-        continue;
-
-      for (std::vector<MuonChamberMatch>::const_iterator chamberMatch = muon->matches().begin();
-           chamberMatch != muon->matches().end();
-           ++chamberMatch) {
-        for (std::vector<MuonSegmentMatch>::const_iterator segmentMatch = chamberMatch->segmentMatches.begin();
-             segmentMatch != chamberMatch->segmentMatches.end();
-             ++segmentMatch) {
-          if (fabs(segmentMatch->x - segmentLocalPosition.x()) < 1E-6 &&
-              fabs(segmentMatch->y - segmentLocalPosition.y()) < 1E-6 &&
-              fabs(segmentMatch->dXdZ - segmentLocalDirection.x() / segmentLocalDirection.z()) < 1E-6 &&
-              fabs(segmentMatch->dYdZ - segmentLocalDirection.y() / segmentLocalDirection.z()) < 1E-6 &&
-              fabs(segmentMatch->xErr - sqrt(segmentLocalPositionError.xx())) < 1E-6 &&
-              fabs(segmentMatch->yErr - sqrt(segmentLocalPositionError.yy())) < 1E-6 &&
-              fabs(segmentMatch->dXdZErr - sqrt(segmentLocalDirectionError.xx())) < 1E-6 &&
-              fabs(segmentMatch->dYdZErr - sqrt(segmentLocalDirectionError.yy())) < 1E-6) {
-            segmentFound = true;
-            if (segmentMatch->isMask(reco::MuonSegmentMatch::BestInStationByDR))
-              segmentBestDrFound = true;
-            break;
-          }
-        }  // segmentMatch
-        if (segmentFound)
-          break;
-      }  // chamberMatch
-      if (segmentFound)
-        break;
-    }  // muon
-
-    if (segmentFound) {
-      hSegmentIsAssociatedRZ->Fill(segmentGlobalPosition.z(), segmentGlobalPosition.perp());
-      hSegmentIsAssociatedXY->Fill(segmentGlobalPosition.x(), segmentGlobalPosition.y());
-
-      if (segmentBestDrFound) {
-        hSegmentIsBestDrAssociatedRZ->Fill(segmentGlobalPosition.z(), segmentGlobalPosition.perp());
-        hSegmentIsBestDrAssociatedXY->Fill(segmentGlobalPosition.x(), segmentGlobalPosition.y());
-      }
-    } else {
-      hSegmentIsNotAssociatedRZ->Fill(segmentGlobalPosition.z(), segmentGlobalPosition.perp());
-      hSegmentIsNotAssociatedXY->Fill(segmentGlobalPosition.x(), segmentGlobalPosition.y());
-      hSegmentIsBestDrNotAssociatedRZ->Fill(segmentGlobalPosition.z(), segmentGlobalPosition.perp());
-      hSegmentIsBestDrNotAssociatedXY->Fill(segmentGlobalPosition.x(), segmentGlobalPosition.y());
-    }
-  }  // dt segment
-
-  for (CSCSegmentCollection::const_iterator segment = cscSegmentCollectionH_->begin();
-       segment != cscSegmentCollectionH_->end();
-       ++segment) {
-    LocalPoint segmentLocalPosition = segment->localPosition();
-    LocalVector segmentLocalDirection = segment->localDirection();
-    LocalError segmentLocalPositionError = segment->localPositionError();
-    LocalError segmentLocalDirectionError = segment->localDirectionError();
-    const GeomDet *segmentGeomDet = geometry_->idToDet(segment->geographicalId());
-    GlobalPoint segmentGlobalPosition = segmentGeomDet->toGlobal(segment->localPosition());
-    bool segmentFound = false;
-    bool segmentBestDrFound = false;
-
-    for (MuonCollection::const_iterator muon = muonCollectionH_->begin(); muon != muonCollectionH_->end(); ++muon) {
-      if (!muon->isMatchesValid())
-        continue;
-
-      for (std::vector<MuonChamberMatch>::const_iterator chamberMatch = muon->matches().begin();
-           chamberMatch != muon->matches().end();
-           ++chamberMatch) {
-        for (std::vector<MuonSegmentMatch>::const_iterator segmentMatch = chamberMatch->segmentMatches.begin();
-             segmentMatch != chamberMatch->segmentMatches.end();
-             ++segmentMatch) {
-          if (fabs(segmentMatch->x - segmentLocalPosition.x()) < 1E-6 &&
-              fabs(segmentMatch->y - segmentLocalPosition.y()) < 1E-6 &&
-              fabs(segmentMatch->dXdZ - segmentLocalDirection.x() / segmentLocalDirection.z()) < 1E-6 &&
-              fabs(segmentMatch->dYdZ - segmentLocalDirection.y() / segmentLocalDirection.z()) < 1E-6 &&
-              fabs(segmentMatch->xErr - sqrt(segmentLocalPositionError.xx())) < 1E-6 &&
-              fabs(segmentMatch->yErr - sqrt(segmentLocalPositionError.yy())) < 1E-6 &&
-              fabs(segmentMatch->dXdZErr - sqrt(segmentLocalDirectionError.xx())) < 1E-6 &&
-              fabs(segmentMatch->dYdZErr - sqrt(segmentLocalDirectionError.yy())) < 1E-6) {
-            segmentFound = true;
-            if (segmentMatch->isMask(reco::MuonSegmentMatch::BestInStationByDR))
-              segmentBestDrFound = true;
-            break;
-          }
-        }  // segmentMatch
-        if (segmentFound)
-          break;
-      }  // chamberMatch
-      if (segmentFound)
-        break;
-    }  // muon
-
-    if (segmentFound) {
-      hSegmentIsAssociatedRZ->Fill(segmentGlobalPosition.z(), segmentGlobalPosition.perp());
-      hSegmentIsAssociatedXY->Fill(segmentGlobalPosition.x(), segmentGlobalPosition.y());
-
-      if (segmentBestDrFound) {
-        hSegmentIsBestDrAssociatedRZ->Fill(segmentGlobalPosition.z(), segmentGlobalPosition.perp());
-        hSegmentIsBestDrAssociatedXY->Fill(segmentGlobalPosition.x(), segmentGlobalPosition.y());
-      }
-    } else {
-      hSegmentIsNotAssociatedRZ->Fill(segmentGlobalPosition.z(), segmentGlobalPosition.perp());
-      hSegmentIsNotAssociatedXY->Fill(segmentGlobalPosition.x(), segmentGlobalPosition.y());
-      hSegmentIsBestDrNotAssociatedRZ->Fill(segmentGlobalPosition.z(), segmentGlobalPosition.perp());
-      hSegmentIsBestDrNotAssociatedXY->Fill(segmentGlobalPosition.x(), segmentGlobalPosition.y());
-    }
-  }  // csc segment
 }
 
 void MuonIdVal::Fill(MonitorElement *me, float f) {
@@ -784,6 +828,3 @@ void MuonIdVal::Fill(MonitorElement *me, float f) {
   // if (fabs(f) < 1E-8) return;
   me->Fill(f);
 }
-
-// define this as a plug-in
-DEFINE_FWK_MODULE(MuonIdVal);
