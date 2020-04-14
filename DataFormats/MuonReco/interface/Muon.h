@@ -361,6 +361,10 @@ namespace reco {
     /// get pointers to best segment and corresponding chamber in vector of chambers
     std::pair<const MuonChamberMatch*, const MuonSegmentMatch*> pair(
         const std::vector<const MuonChamberMatch*>&, ArbitrationType type = SegmentAndTrackArbitration) const;
+
+    /// get a vector of reco::MuonSegmentMatch by MuonSubDetId
+    std::vector<MuonSegmentMatch> getSegmentMatches(const MuonChamberMatch&) const;
+
     /// selector bitmap
     uint64_t selectors_;
 

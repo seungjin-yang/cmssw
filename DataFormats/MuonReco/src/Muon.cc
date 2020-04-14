@@ -83,24 +83,23 @@ int Muon::numberOfMatches(ArbitrationType type) const {
       continue;
     }
 
-    for (std::vector<MuonSegmentMatch>::const_iterator segmentMatch = chamberMatch->segmentMatches.begin();
-         segmentMatch != chamberMatch->segmentMatches.end();
-         segmentMatch++) {
+    const auto& segmentMatches = getSegmentMatches(*chamberMatch);
+    for (const auto& segmentMatch : segmentMatches) {
       if (type == SegmentArbitration)
-        if (segmentMatch->isMask(MuonSegmentMatch::BestInChamberByDR)) {
+        if (segmentMatch.isMask(MuonSegmentMatch::BestInChamberByDR)) {
           matches++;
           break;
         }
       if (type == SegmentAndTrackArbitration)
-        if (segmentMatch->isMask(MuonSegmentMatch::BestInChamberByDR) &&
-            segmentMatch->isMask(MuonSegmentMatch::BelongsToTrackByDR)) {
+        if (segmentMatch.isMask(MuonSegmentMatch::BestInChamberByDR) &&
+            segmentMatch.isMask(MuonSegmentMatch::BelongsToTrackByDR)) {
           matches++;
           break;
         }
       if (type == SegmentAndTrackArbitrationCleaned)
-        if (segmentMatch->isMask(MuonSegmentMatch::BestInChamberByDR) &&
-            segmentMatch->isMask(MuonSegmentMatch::BelongsToTrackByDR) &&
-            segmentMatch->isMask(MuonSegmentMatch::BelongsToTrackByCleaning)) {
+        if (segmentMatch.isMask(MuonSegmentMatch::BestInChamberByDR) &&
+            segmentMatch.isMask(MuonSegmentMatch::BelongsToTrackByDR) &&
+            segmentMatch.isMask(MuonSegmentMatch::BelongsToTrackByCleaning)) {
           matches++;
           break;
         }
@@ -167,9 +166,11 @@ unsigned int Muon::stationMask(ArbitrationType type) const {
           totMask += curMask;
       }
       continue;
-    }
+    } // RPCHitAndTrackArbitration
 
-    if (chamberMatch->segmentMatches.empty())
+
+    const auto& segmentMatches = getSegmentMatches(*chamberMatch);
+    if (segmentMatches.empty())
       continue;
     if (type == NoArbitration) {
       curMask = 1 << ((chamberMatch->station() - 1) + 4 * (chamberMatch->detector() - 1));
@@ -179,8 +180,8 @@ unsigned int Muon::stationMask(ArbitrationType type) const {
       continue;
     }
 
-    for (std::vector<MuonSegmentMatch>::const_iterator segmentMatch = chamberMatch->segmentMatches.begin();
-         segmentMatch != chamberMatch->segmentMatches.end();
+    for (std::vector<MuonSegmentMatch>::const_iterator segmentMatch = segmentMatches.begin();
+         segmentMatch != segmentMatches.end();
          segmentMatch++) {
       if (type == SegmentArbitration)
         if (segmentMatch->isMask(MuonSegmentMatch::BestInStationByDR)) {
@@ -390,45 +391,45 @@ int Muon::numberOfShowers(int nDtDigisCut, int nCscDigisCut) const {
 }
 
 int Muon::numberOfSegments(int station, int muonSubdetId, ArbitrationType type) const {
-  int segments(0);
-  for (std::vector<MuonChamberMatch>::const_iterator chamberMatch = muMatches_.begin();
-       chamberMatch != muMatches_.end();
-       chamberMatch++) {
-    if (chamberMatch->segmentMatches.empty())
+  int num_segments(0);
+
+  for (const MuonChamberMatch & chamberMatch : muMatches_) {
+    if (chamberMatch.station() != station or chamberMatch.detector() != muonSubdetId)
       continue;
-    if (!(chamberMatch->station() == station && chamberMatch->detector() == muonSubdetId))
+
+    const auto& segmentMatches = getSegmentMatches(chamberMatch);
+    if (segmentMatches.empty())
       continue;
 
     if (type == NoArbitration) {
-      segments += chamberMatch->segmentMatches.size();
-      continue;
-    }
+      num_segments += segmentMatches.size();
+    } else {
+      for (const MuonSegmentMatch & segmentMatch : segmentMatches) {
+        if (type == SegmentArbitration)
+          if (segmentMatch.isMask(MuonSegmentMatch::BestInStationByDR)) {
+            num_segments++;
+            break;
+          }
 
-    for (std::vector<MuonSegmentMatch>::const_iterator segmentMatch = chamberMatch->segmentMatches.begin();
-         segmentMatch != chamberMatch->segmentMatches.end();
-         segmentMatch++) {
-      if (type == SegmentArbitration)
-        if (segmentMatch->isMask(MuonSegmentMatch::BestInStationByDR)) {
-          segments++;
-          break;
-        }
-      if (type == SegmentAndTrackArbitration)
-        if (segmentMatch->isMask(MuonSegmentMatch::BestInStationByDR) &&
-            segmentMatch->isMask(MuonSegmentMatch::BelongsToTrackByDR)) {
-          segments++;
-          break;
-        }
-      if (type == SegmentAndTrackArbitrationCleaned)
-        if (segmentMatch->isMask(MuonSegmentMatch::BestInStationByDR) &&
-            segmentMatch->isMask(MuonSegmentMatch::BelongsToTrackByDR) &&
-            segmentMatch->isMask(MuonSegmentMatch::BelongsToTrackByCleaning)) {
-          segments++;
-          break;
-        }
-    }
-  }
+        if (type == SegmentAndTrackArbitration)
+          if (segmentMatch.isMask(MuonSegmentMatch::BestInStationByDR) &&
+              segmentMatch.isMask(MuonSegmentMatch::BelongsToTrackByDR)) {
+            num_segments++;
+            break;
+          }
 
-  return segments;
+        if (type == SegmentAndTrackArbitrationCleaned)
+          if (segmentMatch.isMask(MuonSegmentMatch::BestInStationByDR) &&
+              segmentMatch.isMask(MuonSegmentMatch::BelongsToTrackByDR) &&
+              segmentMatch.isMask(MuonSegmentMatch::BelongsToTrackByCleaning)) {
+            num_segments++;
+            break;
+          }
+      } //MuonSegmentMatch
+    }
+  } // MuonChamberMatch
+
+  return num_segments;
 }
 
 const std::vector<const MuonChamberMatch*> Muon::chambers(int station, int muonSubdetId) const {
@@ -443,39 +444,37 @@ const std::vector<const MuonChamberMatch*> Muon::chambers(int station, int muonS
 
 std::pair<const MuonChamberMatch*, const MuonSegmentMatch*> Muon::pair(
     const std::vector<const MuonChamberMatch*>& chambers, ArbitrationType type) const {
-  MuonChamberMatch* m = nullptr;
-  MuonSegmentMatch* s = nullptr;
-  std::pair<const MuonChamberMatch*, const MuonSegmentMatch*> chamberSegmentPair(m, s);
-
   if (chambers.empty())
-    return chamberSegmentPair;
-  for (std::vector<const MuonChamberMatch*>::const_iterator chamberMatch = chambers.begin();
-       chamberMatch != chambers.end();
-       chamberMatch++) {
-    if ((*chamberMatch)->segmentMatches.empty())
+    return std::make_pair(nullptr, nullptr);
+
+  for (const MuonChamberMatch* chamberMatch : chambers) {
+    const auto& segments = getSegmentMatches(*chamberMatch);
+
+    if (segments.empty())
       continue;
+
     if (type == NoArbitration)
-      return std::make_pair(*chamberMatch, &((*chamberMatch)->segmentMatches.front()));
+      return std::make_pair(chamberMatch, &segments.front());
 
-    for (std::vector<MuonSegmentMatch>::const_iterator segmentMatch = (*chamberMatch)->segmentMatches.begin();
-         segmentMatch != (*chamberMatch)->segmentMatches.end();
-         segmentMatch++) {
+    for (const reco::MuonSegmentMatch & segmentMatch : segments) {
       if (type == SegmentArbitration)
-        if (segmentMatch->isMask(MuonSegmentMatch::BestInStationByDR))
-          return std::make_pair(*chamberMatch, &(*segmentMatch));
-      if (type == SegmentAndTrackArbitration)
-        if (segmentMatch->isMask(MuonSegmentMatch::BestInStationByDR) &&
-            segmentMatch->isMask(MuonSegmentMatch::BelongsToTrackByDR))
-          return std::make_pair(*chamberMatch, &(*segmentMatch));
-      if (type == SegmentAndTrackArbitrationCleaned)
-        if (segmentMatch->isMask(MuonSegmentMatch::BestInStationByDR) &&
-            segmentMatch->isMask(MuonSegmentMatch::BelongsToTrackByDR) &&
-            segmentMatch->isMask(MuonSegmentMatch::BelongsToTrackByCleaning))
-          return std::make_pair(*chamberMatch, &(*segmentMatch));
-    }
-  }
+        if (segmentMatch.isMask(MuonSegmentMatch::BestInStationByDR))
+          return std::make_pair(chamberMatch, &segmentMatch);
 
-  return chamberSegmentPair;
+      if (type == SegmentAndTrackArbitration)
+        if (segmentMatch.isMask(MuonSegmentMatch::BestInStationByDR) &&
+            segmentMatch.isMask(MuonSegmentMatch::BelongsToTrackByDR))
+          return std::make_pair(chamberMatch, &segmentMatch);
+
+      if (type == SegmentAndTrackArbitrationCleaned)
+        if (segmentMatch.isMask(MuonSegmentMatch::BestInStationByDR) &&
+            segmentMatch.isMask(MuonSegmentMatch::BelongsToTrackByDR) &&
+            segmentMatch.isMask(MuonSegmentMatch::BelongsToTrackByCleaning))
+          return std::make_pair(chamberMatch, &segmentMatch);
+    } // MuonSegmentMatch
+  } // MuonChamberMatch
+
+  return std::make_pair(nullptr, nullptr);
 }
 
 float Muon::dX(int station, int muonSubdetId, ArbitrationType type) const {
@@ -1015,4 +1014,12 @@ void Muon::setMuonTrack(const MuonTrackType& type, const TrackRef& t) {
       refittedTrackMap_[type] = t;
       break;
   }
+}
+
+
+std::vector<MuonSegmentMatch> Muon::getSegmentMatches(const MuonChamberMatch& chamberMatch) const {
+  if (chamberMatch.detector() == MuonSubdetId::GEM)
+    return chamberMatch.gemMatches;
+  else
+    return chamberMatch.segmentMatches;
 }
