@@ -303,8 +303,7 @@ void GEMEfficiencyHarvester::doResolution(DQMStore::IBooker& ibooker,
 
     const int num_etas = ieta_data.size();
 
-    TH2F* profile =
-        new TH2F(name, title, num_etas, 0.5, num_etas + 0.5, 2, -0.5, 1.5);
+    TH2F* profile = new TH2F(name, title, num_etas, 0.5, num_etas + 0.5, 2, -0.5, 1.5);
     auto x_axis = profile->GetXaxis();
 
     x_axis->SetTitle("i#eta");

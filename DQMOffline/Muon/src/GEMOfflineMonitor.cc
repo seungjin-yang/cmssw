@@ -80,14 +80,8 @@ void GEMOfflineMonitor::bookDetectorOccupancy(DQMStore::IBooker& ibooker,
 
   // NOTE RecHit
   ibooker.setCurrentFolder("GEM/GEMOfflineMonitor/RecHit");
-  me_hit_det_[key] = helper.book2D("hit_det",
-                                   "Hit Occupancy",
-                                   num_chambers,
-                                   0.5,
-                                   num_chambers + 0.5,
-                                   num_etas,
-                                   0.5,
-                                   num_etas + 0.5);
+  me_hit_det_[key] =
+      helper.book2D("hit_det", "Hit Occupancy", num_chambers, 0.5, num_chambers + 0.5, num_etas, 0.5, num_etas + 0.5);
   setDetLabelsEta(me_hit_det_[key], station);
 }
 
