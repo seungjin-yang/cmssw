@@ -14,5 +14,12 @@ gemEfficiencyHarvesterSTA = DQMEDHarvester('GEMEfficiencyHarvester',
 )
 
 
+gemEfficiencyHarvesterCosmic = DQMEDHarvester('GEMEfficiencyHarvester',
+    folder = cms.untracked.string('GEM/GEMEfficiency/CosmicMuon'),
+    logCategory = cms.untracked.string('GEMEfficiencyHarvesterCosmic')
+)
+
+
 gemEfficiencyHarvesterSeq = cms.Sequence(gemEfficiencyHarvesterTight *
-                                         gemEfficiencyHarvesterSTA)
+                                         gemEfficiencyHarvesterSTA *
+                                         gemEfficiencyHarvesterCosmic)
