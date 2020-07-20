@@ -21,10 +21,13 @@ protected:
 private:
   void bookDetectorOccupancy(
       DQMStore::IBooker &, const GEMStation *, const MEMapKey1 &, const TString &, const TString &);
+  void doDigi(const edm::Event&, const edm::ESHandle<GEMGeometry>&);
+  void doRecHit(const edm::Event&, const edm::ESHandle<GEMGeometry>&);
 
   edm::EDGetTokenT<GEMDigiCollection> digi_token_;
   edm::EDGetTokenT<GEMRecHitCollection> rechit_token_;
-
+  bool do_digi_;
+  bool do_rechit_;
   std::string log_category_;
 
   MEMap1 me_digi_det_;

@@ -9,6 +9,8 @@
 GEMOfflineMonitor::GEMOfflineMonitor(const edm::ParameterSet& pset) : GEMOfflineDQMBase(pset) {
   digi_token_ = consumes<GEMDigiCollection>(pset.getParameter<edm::InputTag>("digiTag"));
   rechit_token_ = consumes<GEMRecHitCollection>(pset.getParameter<edm::InputTag>("recHitTag"));
+  do_digi_ = pset.getUntrackedParameter<bool>("doDigi");
+  do_rechit_ = pset.getUntrackedParameter<bool>("doRecHit");
 }
 
 GEMOfflineMonitor::~GEMOfflineMonitor() {}
@@ -17,6 +19,8 @@ void GEMOfflineMonitor::fillDescriptions(edm::ConfigurationDescriptions& descrip
   edm::ParameterSetDescription desc;
   desc.add<edm::InputTag>("digiTag", edm::InputTag("muonGEMDigis"));
   desc.add<edm::InputTag>("recHitTag", edm::InputTag("gemRecHits"));
+  desc.addUntracked<bool>("doDigi", true);
+  desc.addUntracked<bool>("doRecHit", true);
   desc.addUntracked<std::string>("logCategory", "GEMOfflineMonitor");
   descriptions.add("gemOfflineMonitor", desc);
 }
@@ -80,24 +84,25 @@ void GEMOfflineMonitor::bookDetectorOccupancy(DQMStore::IBooker& ibooker,
 }
 
 void GEMOfflineMonitor::analyze(const edm::Event& event, const edm::EventSetup& setup) {
-  edm::Handle<GEMDigiCollection> digi_collection;
-  event.getByToken(digi_token_, digi_collection);
-  if (not digi_collection.isValid()) {
-    edm::LogError(log_category_) << "GEMDigiCollection is invalid!" << std::endl;
-    return;
-  }
-
-  edm::Handle<GEMRecHitCollection> rechit_collection;
-  event.getByToken(rechit_token_, rechit_collection);
-  if (not rechit_collection.isValid()) {
-    edm::LogError(log_category_) << "GEMRecHitCollection is invalid" << std::endl;
-    return;
-  }
-
   edm::ESHandle<GEMGeometry> gem;
   setup.get<MuonGeometryRecord>().get(gem);
   if (not gem.isValid()) {
     edm::LogError(log_category_) << "GEMGeometry is invalid" << std::endl;
+    return;
+  }
+
+  if (do_digi_)
+    doDigi(event, gem);
+
+  if (do_rechit_)
+    doRecHit(event, gem);
+}
+
+void GEMOfflineMonitor::doDigi(const edm::Event& event, const edm::ESHandle<GEMGeometry>& gem) {
+  edm::Handle<GEMDigiCollection> digi_collection;
+  event.getByToken(digi_token_, digi_collection);
+  if (not digi_collection.isValid()) {
+    edm::LogError(log_category_) << "GEMDigiCollection is invalid!" << std::endl;
     return;
   }
 
@@ -114,8 +119,16 @@ void GEMOfflineMonitor::analyze(const edm::Event& event, const edm::EventSetup& 
       fillME(me_digi_det_, det_key, chamber_bin, vfat_number);
     }
   }
+}
 
-  // GEMRecHit
+void GEMOfflineMonitor::doRecHit(const edm::Event& event, const edm::ESHandle<GEMGeometry>& gem) {
+  edm::Handle<GEMRecHitCollection> rechit_collection;
+  event.getByToken(rechit_token_, rechit_collection);
+  if (not rechit_collection.isValid()) {
+    edm::LogError(log_category_) << "GEMRecHitCollection is invalid" << std::endl;
+    return;
+  }
+
   for (auto hit = rechit_collection->begin(); hit != rechit_collection->end(); hit++) {
     const GEMDetId&& gem_id = hit->gemId();
     const MEMapKey1 det_key{gem_id.region(), gem_id.station()};
