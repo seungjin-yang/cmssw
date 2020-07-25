@@ -25,6 +25,7 @@ private:
   void bookOccupancy(DQMStore::IBooker &, const MEMapKey2 &, const TString &, const TString &);
   void bookResolution(DQMStore::IBooker &, const MEMapKey3 &, const TString &, const TString &);
 
+  const GEMEtaPartition* findEtaPartition(const GEMChamber*, const GlobalPoint&);
   const GEMRecHit *findMatchedHit(const float, const GEMRecHitCollection::range &);
 
   edm::EDGetTokenT<GEMRecHitCollection> rechit_token_;

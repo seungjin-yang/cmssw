@@ -180,9 +180,8 @@ void GEMEfficiencyAnalyzer::analyze(const edm::Event& event, const edm::EventSet
 
   for (const reco::Muon& muon : *muon_view) {
     const reco::Track* track = nullptr;
-
-    if (use_global_muon_ and muon.globalTrack().isNonnull()) {
-      track = muon.globalTrack().get();
+    if (use_global_muon_ and muon.innerTrack().isNonnull()) {
+      track = muon.innerTrack().get();
 
     } else if ((not use_global_muon_) and muon.outerTrack().isNonnull()) {
       track = muon.outerTrack().get();
@@ -195,28 +194,26 @@ void GEMEfficiencyAnalyzer::analyze(const edm::Event& event, const edm::EventSet
 
     const reco::TransientTrack&& transient_track = transient_track_builder->build(track);
     if (not transient_track.isValid()) {
-      edm::LogInfo(log_category_) << "failed to build TransientTrack" << std::endl;
+      edm::LogError(log_category_) << "failed to build TransientTrack" << std::endl;
       continue;
     }
 
-    for (const GEMEtaPartition* eta_partition : gem->etaPartitions()) {
-      // Skip propagation inn the opposite direction.
-      if (muon.eta() * eta_partition->id().region() < 0)
-        continue;
+    const auto&& start_tsos = use_global_muon_ ? transient_track.outermostMeasurementState() : transient_track.innermostMeasurementState();
+    if (not start_tsos.isValid()) {
+      edm::LogError(log_category_) << "failed to get MeasurementState" << std::endl;
+    }
 
-      const BoundPlane& bound_plane = eta_partition->surface();
+    for (const GEMChamber* chamber : gem->chambers()) {
+      const BoundPlane& bound_plane = chamber->surface();
 
-      const TrajectoryStateOnSurface&& tsos =
-          propagator->propagate(transient_track.outermostMeasurementState(), bound_plane);
+      const TrajectoryStateOnSurface&& tsos = propagator->propagate(start_tsos, bound_plane);
       if (not tsos.isValid()) {
+        edm::LogError(log_category_) << "failed to propagate ," << chamber->id() << std::endl;
         continue;
       }
 
-      const LocalPoint&& tsos_local_pos = tsos.localPosition();
-      const LocalPoint tsos_local_pos_2d(tsos_local_pos.x(), tsos_local_pos.y(), 0.0f);
-      if (not bound_plane.bounds().inside(tsos_local_pos_2d)) {
-        continue;
-      }
+      const GlobalPoint&& tsos_global_pos = tsos.globalPosition();
+      const GEMEtaPartition* eta_partition = findEtaPartition(chamber, tsos_global_pos);
 
       const GEMDetId&& gem_id = eta_partition->id();
 
@@ -231,6 +228,7 @@ void GEMEfficiencyAnalyzer::analyze(const edm::Event& event, const edm::EventSet
       fillME(me_muon_pt_, key2, muon.pt());
       fillME(me_muon_eta_, key2, std::fabs(muon.eta()));
 
+      const LocalPoint&& tsos_local_pos = tsos.localPosition();
       const GEMRecHit* matched_hit = findMatchedHit(tsos_local_pos.x(), rechit_collection->get(gem_id));
       if (matched_hit == nullptr) {
         continue;
@@ -242,7 +240,6 @@ void GEMEfficiencyAnalyzer::analyze(const edm::Event& event, const edm::EventSet
 
       const LocalPoint&& hit_local_pos = matched_hit->localPosition();
       const GlobalPoint&& hit_global_pos = eta_partition->toGlobal(hit_local_pos);
-      const GlobalPoint&& tsos_global_pos = tsos.globalPosition();
 
       const float residual_x = tsos_local_pos.x() - hit_local_pos.x();
       const float residual_y = tsos_local_pos.y() - hit_local_pos.y();
@@ -263,6 +260,18 @@ void GEMEfficiencyAnalyzer::analyze(const edm::Event& event, const edm::EventSet
     }  // GEMChamber
   }    // Muon
 }
+
+const GEMEtaPartition* GEMEfficiencyAnalyzer::findEtaPartition(const GEMChamber* chamber, const GlobalPoint& global_point){
+  for (const GEMEtaPartition* eta_partition : chamber->etaPartitions()) {
+    const LocalPoint&& local_point = eta_partition->toLocal(global_point);
+    const LocalPoint local_point_2d(local_point.x(), local_point.y(), 0.0f);
+    if (eta_partition->surface().bounds().inside(local_point_2d)) 
+      return eta_partition;
+  }
+
+  return nullptr;
+}
+
 
 const GEMRecHit* GEMEfficiencyAnalyzer::findMatchedHit(const float track_local_x,
                                                        const GEMRecHitCollection::range& range) {
