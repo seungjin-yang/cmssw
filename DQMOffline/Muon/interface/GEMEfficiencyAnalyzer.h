@@ -25,12 +25,15 @@ private:
   void bookOccupancy(DQMStore::IBooker &, const MEMapKey2 &, const TString &, const TString &);
   void bookResolution(DQMStore::IBooker &, const MEMapKey3 &, const TString &, const TString &);
 
+  const GEMEtaPartition* findEtaPartition(const GEMChamber*, const GlobalPoint&);
   const GEMRecHit *findMatchedHit(const float, const GEMRecHitCollection::range &);
+  const int getCSCDetailBin(bool, bool, bool, bool);
 
   edm::EDGetTokenT<GEMRecHitCollection> rechit_token_;
   edm::EDGetTokenT<edm::View<reco::Muon> > muon_token_;
 
   MuonServiceProxy *muon_service_;
+  std::string propagator_name_;
 
   bool use_global_muon_;
   float residual_x_cut_;
@@ -50,14 +53,19 @@ private:
 
   MEMap2 me_muon_pt_;
   MEMap2 me_muon_eta_;
+  MEMap2 me_muon_phi_;
   MEMap2 me_muon_pt_matched_;
   MEMap2 me_muon_eta_matched_;
+  MEMap2 me_muon_phi_matched_;
 
   MEMap3 me_residual_x_;    // local
   MEMap3 me_residual_y_;    // local
   MEMap3 me_residual_phi_;  // global
   MEMap3 me_pull_x_;
   MEMap3 me_pull_y_;
+
+  MonitorElement* me_csc_;
+  MonitorElement* me_csc_detail_;
 };
 
 #endif  // DQMOffline_Muon_GEMEfficiencyAnalyzer_h

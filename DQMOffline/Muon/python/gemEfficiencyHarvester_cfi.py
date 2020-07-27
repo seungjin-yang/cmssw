@@ -2,17 +2,24 @@ import FWCore.ParameterSet.Config as cms
 from DQMServices.Core.DQMEDHarvester import DQMEDHarvester
 
 
-gemEfficiencyHarvesterTight = DQMEDHarvester('GEMEfficiencyHarvester',
+gemEfficiencyHarvesterTightGlb = DQMEDHarvester('GEMEfficiencyHarvester',
     folder = cms.untracked.string('GEM/GEMEfficiency/TightGlobalMuon'),
-    logCategory = cms.untracked.string('GEMEfficiencyHarvesterTight')
+    logCategory = cms.untracked.string('GEMEfficiencyHarvesterTightGlb')
 )
 
 
-gemEfficiencyHarvesterSTA = DQMEDHarvester('GEMEfficiencyHarvester',
+gemEfficiencyHarvesterSta = DQMEDHarvester('GEMEfficiencyHarvester',
     folder = cms.untracked.string('GEM/GEMEfficiency/StandaloneMuon'),
-    logCategory = cms.untracked.string('GEMEfficiencyHarvesterSTA')
+    logCategory = cms.untracked.string('GEMEfficiencyHarvesterSta')
 )
 
 
-gemEfficiencyHarvesterSeq = cms.Sequence(gemEfficiencyHarvesterTight *
-                                         gemEfficiencyHarvesterSTA)
+gemEfficiencyHarvesterCosmic = DQMEDHarvester('GEMEfficiencyHarvester',
+    folder = cms.untracked.string('GEM/GEMEfficiency/CosmicMuon'),
+    logCategory = cms.untracked.string('GEMEfficiencyHarvesterCosmic')
+)
+
+
+gemEfficiencyHarvesterSeq = cms.Sequence(gemEfficiencyHarvesterTightGlb *
+                                         gemEfficiencyHarvesterSta *
+                                         gemEfficiencyHarvesterCosmic)
