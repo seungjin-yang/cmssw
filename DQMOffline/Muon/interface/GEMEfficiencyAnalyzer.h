@@ -20,6 +20,9 @@ protected:
   void analyze(const edm::Event &event, const edm::EventSetup &eventSetup) override;
 
 private:
+  // https://github.com/cms-sw/cmssw/blob/CMSSW_11_2_0_pre2/MuonAnalysis/MuonAssociators/interface/PropagateToMuon.h#L56-L57
+  enum class MuonType {kNone, kGlobal, kStandalone, kCosmic};
+
   void bookDetectorOccupancy(
       DQMStore::IBooker &, const GEMStation *, const MEMapKey1 &, const TString &, const TString &);
   void bookOccupancy(DQMStore::IBooker &, const MEMapKey2 &, const TString &, const TString &);
@@ -29,13 +32,17 @@ private:
   const GEMRecHit *findMatchedHit(const float, const GEMRecHitCollection::range &);
   const int getCSCDetailBin(bool, bool, bool, bool);
 
+  const std::string getDetName(const DetId&);
+  const std::string getDetName(const unsigned int);
+  const unsigned int getDetIdx(unsigned int);
+
   edm::EDGetTokenT<GEMRecHitCollection> rechit_token_;
   edm::EDGetTokenT<edm::View<reco::Muon> > muon_token_;
 
   MuonServiceProxy *muon_service_;
-  std::string propagator_name_;
 
-  bool use_global_muon_;
+  std::string muon_type_str_;
+  MuonType muon_type_;
   float residual_x_cut_;
 
   std::vector<double> pt_binning_;
@@ -48,6 +55,7 @@ private:
   TString title_;
   TString matched_title_;
 
+  // NOTE
   MEMap1 me_detector_;
   MEMap1 me_detector_matched_;
 
@@ -66,6 +74,49 @@ private:
 
   MonitorElement* me_csc_;
   MonitorElement* me_csc_detail_;
+
+  MonitorElement* me_csc_matched_;
+  MonitorElement* me_csc_detail_matched_;
+
+  //////////////////////////////////////////////////////////////////////////////
+  // NOTE
+  //////////////////////////////////////////////////////////////////////////////
+  MonitorElement* me_debug_normalized_chi2_;
+  MonitorElement* me_debug_normalized_chi2_matched_;
+
+  MonitorElement* me_debug_start_state_x_err_;
+  MonitorElement* me_debug_start_state_x_err_matched_;
+
+  MonitorElement* me_debug_start_state_x_err_det_;
+  MonitorElement* me_debug_start_state_x_err_det_matched_;
+
+  MonitorElement* me_debug_start_state_x_err_det_detail_;
+  MonitorElement* me_debug_start_state_x_err_det_detail_matched_;
+
+  MonitorElement* me_debug_dest_state_x_err_;
+  MonitorElement* me_debug_dest_state_x_err_matched_;
+
+  MonitorElement* me_debug_error_propagation_;
+
+  MonitorElement* me_debug_num_valid_chambers_per_layer_;
+  MonitorElement* me_debug_in_out_det_;
+  MonitorElement* me_debug_in_out_det_matched_;
+
+  const std::vector<std::string> det_labels = {
+    "GE-1/1",
+    "ME-1/1", "ME-1/2", "ME-1/3",
+    "RE-1/2", "RE-1/3",
+    "RE-2/2", "RE-2/3",
+    "ME-2/1", "ME-2/2",
+    "ME-3/1", "ME-3/2",
+    "RE-3/2", "RE-3/3",
+    "ME-4/1", "ME-4/2",
+    "RE-4/2", "RE-4/3",
+    "MB",
+    "RB",
+    "other",
+  };
+
 };
 
 #endif  // DQMOffline_Muon_GEMEfficiencyAnalyzer_h

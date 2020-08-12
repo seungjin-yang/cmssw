@@ -5,15 +5,26 @@
 #include "TrackingTools/Records/interface/TransientTrackRecord.h"
 #include "DataFormats/Math/interface/deltaPhi.h"
 
+#include "Geometry/CSCGeometry/interface/CSCGeometry.h"
+#include "DataFormats/MuonDetId/interface/RPCDetId.h"
+
+
 GEMEfficiencyAnalyzer::GEMEfficiencyAnalyzer(const edm::ParameterSet& pset) : GEMOfflineDQMBase(pset) {
   rechit_token_ = consumes<GEMRecHitCollection>(pset.getParameter<edm::InputTag>("recHitTag"));
   muon_token_ = consumes<edm::View<reco::Muon> >(pset.getParameter<edm::InputTag>("muonTag"));
 
   auto muon_service_parameter = pset.getParameter<edm::ParameterSet>("ServiceParameters");
   muon_service_ = new MuonServiceProxy(muon_service_parameter, consumesCollector());
-  propagator_name_ = pset.getUntrackedParameter<std::string>("propagatorName");
 
-  use_global_muon_ = pset.getUntrackedParameter<bool>("useGlobalMuon");
+  muon_type_str_ = pset.getUntrackedParameter<std::string>("muonType");
+  if (muon_type_str_.compare("Global") == 0)
+    muon_type_ = MuonType::kGlobal;
+  else if (muon_type_str_.compare("Standalone") == 0)
+    muon_type_ = MuonType::kStandalone;
+  else if (muon_type_str_.compare("Cosmic") == 0)
+    muon_type_ = MuonType::kCosmic;
+  else
+    muon_type_ = MuonType::kNone;
 
   residual_x_cut_ = static_cast<float>(pset.getParameter<double>("residualXCut"));
 
@@ -24,7 +35,7 @@ GEMEfficiencyAnalyzer::GEMEfficiencyAnalyzer(const edm::ParameterSet& pset) : GE
 
   folder_ = pset.getUntrackedParameter<std::string>("folder");
 
-  title_ = (use_global_muon_ ? "Global Muon" : "Standalone Muon");
+  title_ = TString::Format("%s Muon", muon_type_str_.c_str());
   matched_title_ = title_ + TString::Format(" (|x_{Muon} - x_{Hit}| < %.1f)", residual_x_cut_);
 }
 
@@ -84,25 +95,104 @@ void GEMEfficiencyAnalyzer::bookHistograms(DQMStore::IBooker& ibooker,
     }  // station
   }    // region
 
+  //////////////////////////////////////////////////////////////////////////////
+  // NOTE debug - efficiency
+  //////////////////////////////////////////////////////////////////////////////
+
+  ibooker.setCurrentFolder(folder_ + "/Efficiency");
+
   TString csc_title = "the location of segments for CSC hitting at GEM (before matching with GEM rechits)";
 
-  me_csc_ = ibooker.book1D("zzz_csc_seg_st", csc_title, 4, 0.5, 4.5);
-  for (int xbin = 1; xbin <= 4; xbin++) {
-    me_csc_->setBinLabel(xbin, std::to_string(xbin));
+  me_csc_ = ibooker.book1D("csc_seg", csc_title, 5, -0.5, 4.5);
+  me_csc_matched_ = ibooker.book1D("csc_seg_matched", csc_title, 5, -0.5, 4.5);
+
+  std::vector<std::string> csc_labels = {"None", "1", "2", "3", "4"};
+
+  for (unsigned int idx = 0; idx < csc_labels.size(); idx++) {
+    me_csc_->setBinLabel(idx  + 1, csc_labels[idx]);
+    me_csc_matched_->setBinLabel(idx + 1, csc_labels[idx]);
   }  
 
   std::vector<std::string> csc_detail_labels = {
+    "None",
     "1", "2", "3", "4",
     "1+2", "1+3", "1+4", "2+3", "2+4", "3+4",
     "1+2+3", "1+2+4", "1+3+4", "2+3+4",
-    "All", "None",
+    "All",
   };
 
-  me_csc_detail_ = ibooker.book1D("zzz_csc_seg_st_detail", csc_title, csc_detail_labels.size(), 0.5, csc_detail_labels.size() + 0.5);
+  me_csc_detail_ = ibooker.book1D("csc_seg_detail", csc_title, csc_detail_labels.size(), 0.5, csc_detail_labels.size() + 0.5);
+  me_csc_detail_matched_ = ibooker.book1D("csc_seg_detail_matched", csc_title, csc_detail_labels.size(), 0.5, csc_detail_labels.size() + 0.5);
+
   for (unsigned int idx = 0; idx < csc_detail_labels.size(); idx++) {
     me_csc_detail_->setBinLabel(idx + 1,  csc_detail_labels[idx]);
+    me_csc_detail_matched_->setBinLabel(idx + 1,  csc_detail_labels[idx]);
   }
 
+  me_debug_start_state_x_err_ = ibooker.book1D("start_state_x_err", "x error", 100, 0, 0.2);
+  me_debug_start_state_x_err_matched_ = ibooker.book1D("start_state_x_err_matched", "x error_matched", 100, 0, 0.2);
+
+  me_debug_dest_state_x_err_ = ibooker.book1D("dest_state_x_err", "x error", 100, 0, 10);
+  me_debug_dest_state_x_err_matched_ = ibooker.book1D("dest_state_x_err_matched", "x error_matched", 100, 0, 10);
+
+  me_debug_start_state_x_err_det_ = ibooker.book1D(
+      "start_state_x_err_det", "x error",
+      det_labels.size(), -0.5, det_labels.size() - 0.5);
+
+  me_debug_start_state_x_err_det_matched_ = ibooker.book1D(
+      "start_state_x_err_det_matched", "x error",
+      det_labels.size(), -0.5, det_labels.size() - 0.5);
+
+  me_debug_start_state_x_err_det_detail_ = ibooker.book2D(
+      "start_state_x_err_det_detail", "x error",
+      det_labels.size(), -0.5, det_labels.size() - 0.5,
+      40, 0, 0.2);
+
+  me_debug_start_state_x_err_det_detail_matched_ = ibooker.book2D(
+      "start_state_x_err_det_detail_matched", "x error",
+      det_labels.size(), -0.5, det_labels.size() - 0.5,
+      40, 0, 0.2);
+
+  me_debug_normalized_chi2_ = ibooker.book1D(
+      "normalized_chi2", "#chi^2 / ndof",
+      100, 0, 10);
+
+  me_debug_normalized_chi2_matched_ = ibooker.book1D(
+      "normalized_chi2_matched", "#chi^2 / ndof (matched)",
+      100, 0, 10);
+
+
+  me_debug_in_out_det_ = ibooker.book2D(
+      "in_out_det", ";innerDet;outerDet;",
+      det_labels.size(), -0.5, det_labels.size() - 0.5,
+      det_labels.size(), -0.5, det_labels.size() - 0.5);
+
+  me_debug_in_out_det_matched_ = ibooker.book2D(
+      "in_out_det_matched", ";innerDet;outerDet;",
+      det_labels.size(), -0.5, det_labels.size() - 0.5,
+      det_labels.size(), -0.5, det_labels.size() - 0.5);
+
+  for (unsigned int idx = 0; idx < det_labels.size(); idx++) {
+    me_debug_in_out_det_->setBinLabel(idx + 1, det_labels[idx]);
+    me_debug_in_out_det_matched_->setBinLabel(idx + 1, det_labels[idx]);
+
+    me_debug_in_out_det_->setBinLabel(idx + 1, det_labels[idx], 2);
+    me_debug_in_out_det_matched_->setBinLabel(idx + 1, det_labels[idx], 2);
+  }
+
+  //////////////////////////////////////////////////////////////////////////////
+  //
+  //////////////////////////////////////////////////////////////////////////////
+  ibooker.setCurrentFolder(folder_ + "/Debug");
+  me_debug_error_propagation_ = ibooker.book2D(
+      "error_propagation",
+      "Error;#sigma_{x}, Start;#sigma_{x}, Destination",
+      40, 0, 2,
+      100, 0, 20);
+
+  me_debug_num_valid_chambers_per_layer_ = ibooker.book1D(
+      "num_valid_chambers_per_layer", ";Number of chambers per layer;Entries",
+      37, -0.5, 36.5);
 }
 
 void GEMEfficiencyAnalyzer::bookDetectorOccupancy(DQMStore::IBooker& ibooker,
@@ -169,6 +259,13 @@ void GEMEfficiencyAnalyzer::bookResolution(DQMStore::IBooker& ibooker,
 }
 
 void GEMEfficiencyAnalyzer::analyze(const edm::Event& event, const edm::EventSetup& setup) {
+  // FIXME
+  if (muon_type_ == MuonType::kNone) {
+    edm::LogError(log_category_) << "wrong muon name" << std::endl;
+    return;
+  }
+
+
   edm::Handle<GEMRecHitCollection> rechit_collection;
   event.getByToken(rechit_token_, rechit_collection);
   if (not rechit_collection.isValid()) {
@@ -180,12 +277,20 @@ void GEMEfficiencyAnalyzer::analyze(const edm::Event& event, const edm::EventSet
   event.getByToken(muon_token_, muon_view);
   if (not muon_view.isValid()) {
     edm::LogError(log_category_) << "View<Muon> is invalid" << std::endl;
+    return;
   }
 
   edm::ESHandle<GEMGeometry> gem;
   setup.get<MuonGeometryRecord>().get(gem);
   if (not gem.isValid()) {
     edm::LogError(log_category_) << "GEMGeometry is invalid" << std::endl;
+    return;
+  }
+
+  edm::ESHandle<CSCGeometry> csc;
+  setup.get<MuonGeometryRecord>().get(csc);
+  if (not csc.isValid()) {
+    edm::LogError(log_category_) << "CSCGeometry is invalid" << std::endl;
     return;
   }
 
@@ -197,22 +302,38 @@ void GEMEfficiencyAnalyzer::analyze(const edm::Event& event, const edm::EventSet
   }
 
   muon_service_->update(setup);
-  edm::ESHandle<Propagator>&& propagator = muon_service_->propagator(propagator_name_);
-  if (not propagator.isValid()) {
-    edm::LogError(log_category_) << "Propagator is invalid" << std::endl;
+
+  edm::ESHandle<Propagator>&& propagator_any = muon_service_->propagator("SteppingHelixPropagatorAny");
+  if (not propagator_any.isValid()) {
+    edm::LogError(log_category_) << "SteppingHelixPropagatorAny is invalid" << std::endl;
     return;
   }
 
+  edm::ESHandle<Propagator>&& propagator_along = muon_service_->propagator("SteppingHelixPropagatorAlong");
+  if (not propagator_along.isValid()) {
+    edm::LogError(log_category_) << "SteppingHelixPropagatorAlong is invalid" << std::endl;
+    return;
+  }
+
+  edm::ESHandle<Propagator>&& propagator_opposite = muon_service_->propagator("SteppingHelixPropagatorOpposite");
+  if (not propagator_opposite.isValid()) {
+    edm::LogError(log_category_) << "SteppingHelixPropagatorOpposite is invalid" << std::endl;
+    return;
+  }
+
+  edm::ESHandle<MagneticField>&& magnetic_field = muon_service_->magneticField();
+
+  std::map<PropagationDirection, edm::ESHandle<Propagator> > propagator_map;
+  propagator_map.emplace(PropagationDirection::anyDirection, std::move(propagator_any));
+  propagator_map.emplace(PropagationDirection::alongMomentum, std::move(propagator_along));
+  propagator_map.emplace(PropagationDirection::oppositeToMomentum, std::move(propagator_opposite));
 
   for (const reco::Muon& muon : *muon_view) {
-
-
-    
     const reco::Track* track = nullptr;
-    if (use_global_muon_ and muon.innerTrack().isNonnull()) {
+    if ((muon_type_ == MuonType::kGlobal) and muon.innerTrack().isNonnull()) {
       track = muon.innerTrack().get();
 
-    } else if ((not use_global_muon_) and muon.outerTrack().isNonnull()) {
+    } else if ((muon_type_ != MuonType::kGlobal) and muon.outerTrack().isNonnull()) {
       track = muon.outerTrack().get();
     }
 
@@ -221,25 +342,12 @@ void GEMEfficiencyAnalyzer::analyze(const edm::Event& event, const edm::EventSet
       continue;
     }
 
+    // NOTE TransientTrack
     const reco::TransientTrack&& transient_track = transient_track_builder->build(track);
     if (not transient_track.isValid()) {
       edm::LogError(log_category_) << "failed to build TransientTrack" << std::endl;
       continue;
     }
-
-    const auto&& start_tsos = use_global_muon_ ? transient_track.outermostMeasurementState() : transient_track.innermostMeasurementState();
-
-
-
-    if (not start_tsos.isValid()) {
-      edm::LogError(log_category_) << "failed to get MeasurementState" << std::endl;
-    }
-
-    // unsigned int station_mask = muon.stationMask();
-    // const bool has_csc_st1 = (station_mask & 1 << 4) != 0;
-    // const bool has_csc_st2 = (station_mask & 1 << 5) != 0;
-    // const bool has_csc_st3 = (station_mask & 1 << 6) != 0;
-    // const bool has_csc_st4 = (station_mask & 1 << 7) != 0;
 
     const int num_csc_st1 = muon.numberOfSegments(1, MuonSubdetId::CSC);
     const int num_csc_st2 = muon.numberOfSegments(2, MuonSubdetId::CSC);
@@ -251,75 +359,248 @@ void GEMEfficiencyAnalyzer::analyze(const edm::Event& event, const edm::EventSet
     const bool has_csc_st3 = num_csc_st3 > 0;
     const bool has_csc_st4 = num_csc_st4 > 0;
 
-    const int csc_detail_bin = getCSCDetailBin(has_csc_st1, has_csc_st2, has_csc_st3, has_csc_st4);
-
-    if (log_category_.find("Cosmic") != std::string::npos) {
-      std::cout << log_category_ << ": "
-                << Form("%d, %d, %d, %d --> %d", num_csc_st1, num_csc_st2, num_csc_st3, num_csc_st4, csc_detail_bin)
-                << std::endl;
+    const bool has_no_csc_st = not (has_csc_st1 or has_csc_st2 or has_csc_st3 or has_csc_st4);
+    if (has_no_csc_st) {
+      std::cout << "no csc Station" << std::endl;
+      continue;
     }
 
-    for (const GEMChamber* chamber : gem->chambers()) {
-      const BoundPlane& bound_plane = chamber->surface();
+    TrajectoryStateOnSurface start_state;
+    PropagationDirection propagation_direction;
+    bool okay = false;
 
-      const TrajectoryStateOnSurface&& tsos = propagator->propagate(start_tsos, bound_plane);
-      if (not tsos.isValid()) {
-        edm::LogInfo(log_category_) << "failed to propagate ," << chamber->id() << std::endl;
-        continue;
+    unsigned int start_raw_det_id = 0;
+    unsigned int inner_det_id = 0;
+    unsigned int outer_det_id = 0;
+    bool is_from_outside_to_inside = false;
+
+    switch (muon_type_) {
+      case MuonType::kGlobal: {
+        // start_state = transient_track.outermostMeasurementState().freeState();
+        start_state = std::move(transient_track.outermostMeasurementState());
+        // propagation_direction = PropagationDirection::alongMomentum;
+        propagation_direction = PropagationDirection::anyDirection;
+        okay = true;
+        break;
       }
 
-      const GlobalPoint&& tsos_global_pos = tsos.globalPosition();
-      const GEMEtaPartition* eta_partition = findEtaPartition(chamber, tsos_global_pos);
-      if (eta_partition == nullptr) {
-        edm::LogInfo(log_category_) << "failed to find GEMEtaPartition" << std::endl; 
-        continue;
+      case MuonType::kStandalone: {
+        // start_state = transient_track.outermostMeasurementState().freeState();
+        start_state = std::move(transient_track.outermostMeasurementState());
+        // propagation_direction = PropagationDirection::oppositeToMomentum;
+        propagation_direction = PropagationDirection::anyDirection;
+        okay = true;
+        break;
       }
 
-      const GEMDetId&& gem_id = eta_partition->id();
+      case MuonType::kCosmic: {
+        float x2_in = std::hypot(track->innerPosition().x(), track->innerPosition().y());
+        float x2_out = std::hypot(track->outerPosition().x(), track->outerPosition().y());
 
-      bool is_odd = gem_id.station() == 1 ? (gem_id.chamber() % 2 == 1) : false;
-      const std::tuple<int, int> key1{gem_id.region(), gem_id.station()};
-      const std::tuple<int, int, bool> key2{gem_id.region(), gem_id.station(), is_odd};
-      const std::tuple<int, int, bool, int> key3{gem_id.region(), gem_id.station(), is_odd, gem_id.roll()};
+        float p2_in = track->innerMomentum().mag2();
+        float p2_out = track->outerMomentum().mag2();
 
-      const int chamber_bin = getDetOccXBin(gem_id, gem);
+        if (x2_in < x2_out) {
+          start_state = std::move(transient_track.outermostMeasurementState());
+          start_raw_det_id = track->outerDetId();
 
-      fillME(me_detector_, key1, chamber_bin, gem_id.roll());
-      fillME(me_muon_pt_, key2, muon.pt());
-      fillME(me_muon_eta_, key2, std::fabs(muon.eta()));
-      fillME(me_muon_phi_, key2, muon.phi());
+          inner_det_id = track->innerDetId();
+          outer_det_id = track->outerDetId();
 
-      const LocalPoint&& tsos_local_pos = tsos.localPosition();
-      const GEMRecHit* matched_hit = findMatchedHit(tsos_local_pos.x(), rechit_collection->get(gem_id));
-      if (matched_hit == nullptr) {
-        continue;
+          // start_state = std::move(transient_track.innermostMeasurementState());
+          // start_raw_det_id = track->innerDetId();
+
+          const std::string in_det_name = getDetName(track->innerDetId());
+          const std::string out_det_name = getDetName(track->outerDetId());
+
+        } else {
+          start_state = std::move(transient_track.innermostMeasurementState());
+          start_raw_det_id = track->innerDetId();
+
+          inner_det_id = track->outerDetId();
+          outer_det_id = track->innerDetId();
+
+          // start_state = std::move(transient_track.outermostMeasurementState());
+          // start_raw_det_id = track->outerDetId();
+
+          const std::string in_det_name = getDetName(track->outerDetId());
+          const std::string out_det_name = getDetName(track->innerDetId());
+
+          std::swap(p2_in, p2_out);
+        }
+
+        propagation_direction = (p2_in > p2_out) ? PropagationDirection::oppositeToMomentum : PropagationDirection::alongMomentum;
+        // propagation_direction = PropagationDirection::anyDirection;
+        is_from_outside_to_inside = p2_out > p2_in;
+        okay = true;
+        break;
       }
 
-      fillME(me_detector_matched_, key1, chamber_bin, gem_id.roll());
-      fillME(me_muon_pt_matched_, key2, muon.pt());
-      fillME(me_muon_eta_matched_, key2, std::fabs(muon.eta()));
-      fillME(me_muon_phi_matched_, key2, muon.phi());
+      default: {
+        propagation_direction = PropagationDirection::anyDirection;
+        break;
+      }
+    }
 
-      const LocalPoint&& hit_local_pos = matched_hit->localPosition();
-      const GlobalPoint&& hit_global_pos = eta_partition->toGlobal(hit_local_pos);
+    if (not okay) {
+      edm::LogError(log_category_) << "sth wrong" << std::endl;
+    }
 
-      const float residual_x = tsos_local_pos.x() - hit_local_pos.x();
-      const float residual_y = tsos_local_pos.y() - hit_local_pos.y();
-      const float residual_phi = reco::deltaPhi(tsos_global_pos.barePhi(), hit_global_pos.barePhi());
+    if (not start_state.isValid()) {
+      edm::LogError(log_category_) << "A starting TrajectoryStateOnSurface is not valid!" << std::endl;
+    }
 
-      const LocalError&& tsos_err = tsos.localError().positionError();
-      const LocalError&& hit_err = matched_hit->localPositionError();
+    const unsigned int start_det_idx = getDetIdx(start_raw_det_id);
+    const unsigned int inner_det_idx = getDetIdx(inner_det_id);
+    const unsigned int outer_det_idx = getDetIdx(outer_det_id);
+    const float start_state_x_err = std::sqrt(start_state.localError().positionError().xx());
 
-      const float pull_x = residual_x / std::sqrt(tsos_err.xx() + hit_err.xx());
-      const float pull_y = residual_y / std::sqrt(tsos_err.yy() + hit_err.yy());
 
-      fillME(me_residual_x_, key3, residual_x);
-      fillME(me_residual_y_, key3, residual_y);
-      fillME(me_residual_phi_, key3, residual_phi);
+    const int csc_detail_bin = getCSCDetailBin(has_csc_st1, has_csc_st2, has_csc_st3, has_csc_st4);
 
-      fillME(me_pull_x_, key3, pull_x);
-      fillME(me_pull_y_, key3, pull_y);
-    }  // GEMChamber
+    // NOTE Currently, only GE11 is being considered.
+    for (const GEMRegion* region : gem->regions()) {
+
+      // NOTE
+      bool is_opposite_region = (muon.eta() * region->region() < 0);
+
+      if (muon_type_ == MuonType::kCosmic) {
+        if (is_from_outside_to_inside xor is_opposite_region)
+          continue;
+
+      } else {
+        // pp collision
+        if (is_opposite_region)
+          continue;
+      }
+
+      for (const GEMStation* station : region->stations()) {
+
+        std::map<int, std::vector<const GEMChamber*> > chambers_per_layer;
+        for (int layer_id : {1, 2}) {
+          chambers_per_layer.emplace(layer_id, std::vector<const GEMChamber*>());
+          chambers_per_layer[layer_id].reserve(station->superChambers().size());
+        }
+
+        for (const GEMSuperChamber* super_chamber : station->superChambers()) {
+          for (const GEMChamber* chamber : super_chamber->chambers()) {
+            chambers_per_layer[chamber->id().layer()].push_back(chamber);
+          }
+        }
+
+        for (const auto [layer_id, layer] : chambers_per_layer) {
+          int debug_num_valid_chambers_per_layer = 0;
+
+          for (const GEMChamber* chamber : layer) {            
+            const BoundPlane& bound_plane = chamber->surface();
+
+            const auto&& tsos = propagator_map[propagation_direction]->propagate(start_state, bound_plane);
+            if (not tsos.isValid()) {
+              edm::LogInfo(log_category_) << "failed to propagate ," << chamber->id() << std::endl;
+              continue;
+            }
+
+            const GlobalPoint&& tsos_global_pos = tsos.globalPosition();
+            const LocalError&& tsos_err = tsos.localError().positionError();
+            const GEMEtaPartition* eta_partition = findEtaPartition(chamber, tsos_global_pos);
+            if (eta_partition == nullptr) {
+              edm::LogInfo(log_category_) << "failed to find GEMEtaPartition" << std::endl; 
+              continue;
+            }
+
+            auto debug_range = rechit_collection->get(chamber->id());
+            auto num_rechits_on_chamber = std::distance(debug_range.first, debug_range.second);
+
+            if (muon_type_ == MuonType::kCosmic) {
+              std::cout << "GEM_DEBUG: " << num_rechits_on_chamber << std::endl;
+            }
+            me_debug_error_propagation_->Fill(start_state_x_err, std::sqrt(tsos_err.xx()));
+            me_debug_in_out_det_->Fill(inner_det_idx, outer_det_idx);
+            debug_num_valid_chambers_per_layer++;
+
+            if (has_no_csc_st) me_csc_->Fill(0);
+            if (has_csc_st1)   me_csc_->Fill(1);
+            if (has_csc_st2)   me_csc_->Fill(2);
+            if (has_csc_st3)   me_csc_->Fill(3);
+            if (has_csc_st4)   me_csc_->Fill(4);
+            me_csc_detail_->Fill(csc_detail_bin);
+
+            const GEMDetId&& gem_id = eta_partition->id();
+
+            bool is_odd = gem_id.station() == 1 ? (gem_id.chamber() % 2 == 1) : false;
+            const std::tuple<int, int> key1{gem_id.region(), gem_id.station()};
+            const std::tuple<int, int, bool> key2{gem_id.region(), gem_id.station(), is_odd};
+            const std::tuple<int, int, bool, int> key3{gem_id.region(), gem_id.station(), is_odd, gem_id.roll()};
+
+            const int chamber_bin = getDetOccXBin(gem_id, gem);
+
+            fillME(me_detector_, key1, chamber_bin, gem_id.roll());
+            fillME(me_muon_pt_, key2, muon.pt());
+            fillME(me_muon_eta_, key2, std::fabs(muon.eta()));
+            fillME(me_muon_phi_, key2, muon.phi());
+
+            me_debug_start_state_x_err_->Fill(start_state_x_err);
+            me_debug_start_state_x_err_det_->Fill(start_det_idx);
+            me_debug_start_state_x_err_det_detail_->Fill(start_det_idx, start_state_x_err);
+
+            me_debug_dest_state_x_err_->Fill(std::sqrt(tsos_err.xx()));
+
+            me_debug_normalized_chi2_->Fill(track->normalizedChi2());
+
+            const LocalPoint&& tsos_local_pos = tsos.localPosition();
+            const GEMRecHit* matched_hit = findMatchedHit(tsos_local_pos.x(), rechit_collection->get(gem_id));
+            if (matched_hit == nullptr) {
+              continue;
+            }
+
+            if (has_no_csc_st) me_csc_matched_->Fill(0);
+            if (has_csc_st1)   me_csc_matched_->Fill(1);
+            if (has_csc_st2)   me_csc_matched_->Fill(2);
+            if (has_csc_st3)   me_csc_matched_->Fill(3);
+            if (has_csc_st4)   me_csc_matched_->Fill(4);
+            me_csc_detail_matched_->Fill(csc_detail_bin);
+            me_debug_in_out_det_matched_->Fill(inner_det_idx, outer_det_idx);
+
+
+            fillME(me_detector_matched_, key1, chamber_bin, gem_id.roll());
+            fillME(me_muon_pt_matched_, key2, muon.pt());
+            fillME(me_muon_eta_matched_, key2, std::fabs(muon.eta()));
+            fillME(me_muon_phi_matched_, key2, muon.phi());
+
+            me_debug_start_state_x_err_matched_->Fill(start_state_x_err);
+            me_debug_start_state_x_err_det_matched_->Fill(start_det_idx);
+            me_debug_start_state_x_err_det_detail_matched_->Fill(start_det_idx, start_state_x_err);
+
+            me_debug_dest_state_x_err_matched_->Fill(std::sqrt(tsos_err.xx()));
+
+            me_debug_normalized_chi2_matched_->Fill(track->normalizedChi2());
+
+            const LocalPoint&& hit_local_pos = matched_hit->localPosition();
+            const GlobalPoint&& hit_global_pos = eta_partition->toGlobal(hit_local_pos);
+
+            const float residual_x = tsos_local_pos.x() - hit_local_pos.x();
+            const float residual_y = tsos_local_pos.y() - hit_local_pos.y();
+            const float residual_phi = reco::deltaPhi(tsos_global_pos.barePhi(), hit_global_pos.barePhi());
+
+            const LocalError&& hit_err = matched_hit->localPositionError();
+
+            const float pull_x = residual_x / std::sqrt(tsos_err.xx() + hit_err.xx());
+            const float pull_y = residual_y / std::sqrt(tsos_err.yy() + hit_err.yy());
+
+            fillME(me_residual_x_, key3, residual_x);
+            fillME(me_residual_y_, key3, residual_y);
+            fillME(me_residual_phi_, key3, residual_phi);
+
+            fillME(me_pull_x_, key3, pull_x);
+            fillME(me_pull_y_, key3, pull_y);
+          } // chamber
+
+          me_debug_num_valid_chambers_per_layer_->Fill(debug_num_valid_chambers_per_layer);
+
+        } // layer
+      } // GEMStation
+    } // GEMRegion
+
   }    // Muon
 }
 
@@ -386,4 +667,83 @@ const int GEMEfficiencyAnalyzer::getCSCDetailBin(bool has_st1, bool has_st2, boo
     xbin += 6;
 
   return xbin;
+}
+
+
+const std::string GEMEfficiencyAnalyzer::getDetName(const DetId& det_id) {
+  std::string det_name;
+  if (det_id.det() == DetId::Detector::Muon) {
+    if (det_id.subdetId() == MuonSubdetId::DT) {
+      const DTWireId dt_id{det_id};
+      std::stringstream buffer;
+      buffer << dt_id;
+      det_name = "DT: " + buffer.str();
+
+    } else if (det_id.subdetId() == MuonSubdetId::CSC) {
+      const CSCDetId csc_id{det_id};
+      std::stringstream buffer;
+      buffer << csc_id;
+      det_name = "CSC: " + buffer.str();
+
+    } else if (det_id.subdetId() == MuonSubdetId::RPC) {
+      const RPCDetId rpc_id{det_id};
+      std::stringstream buffer;
+      buffer << rpc_id;
+      det_name = "RPC: " + buffer.str();
+
+    } else if (det_id.subdetId() == MuonSubdetId::GEM) {
+      const GEMDetId gem_id{det_id};
+      std::stringstream buffer;
+      buffer << gem_id;
+      det_name = "GEM: " + buffer.str();
+
+    } else {
+      det_name = "wrong muon det";
+    }
+
+  } else { 
+    det_name = "wront det";
+  }
+  return det_name;
+}
+
+
+const std::string GEMEfficiencyAnalyzer::getDetName(const unsigned int raw_det_id) {
+  const DetId det_id{raw_det_id};
+  return getDetName(det_id);
+}
+
+
+const unsigned int GEMEfficiencyAnalyzer::getDetIdx(unsigned int raw_det_id) {
+  DetId det_id{raw_det_id};
+  std::string label = "unknown";
+
+  if (det_id.det() == DetId::Detector::Muon) {
+    if (det_id.subdetId() == MuonSubdetId::DT) {
+      const DTWireId dt_id{det_id};
+      label = "MB";
+
+    } else if (det_id.subdetId() == MuonSubdetId::CSC) {
+      const CSCDetId csc_id{det_id};
+      label = Form("ME%d/%d", csc_id.zendcap() * csc_id.station(), csc_id.ring());
+
+    } else if (det_id.subdetId() == MuonSubdetId::RPC) {
+      const RPCDetId rpc_id{det_id};
+
+      if (rpc_id.region() == 0) 
+        label = "RB";
+      else
+        label = Form("RE%d/%d", rpc_id.region() * rpc_id.station(), rpc_id.ring());
+
+    } else if (det_id.subdetId() == MuonSubdetId::GEM) {
+      const GEMDetId gem_id{det_id};
+      label = Form("GE%d/1", gem_id.region() * gem_id.station());
+    }
+  }
+
+  unsigned int idx = std::find(det_labels.begin(), det_labels.end(), label) - det_labels.begin();
+  if (idx == det_labels.size())
+    idx--;
+
+  return idx;
 }

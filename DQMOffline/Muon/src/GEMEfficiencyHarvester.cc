@@ -119,6 +119,7 @@ void GEMEfficiencyHarvester::doEfficiency(DQMStore::IBooker& ibooker, DQMStore::
     const auto& [me_passed, me_total] = value;
     if (me_passed == nullptr) {
       edm::LogError(log_category_) << "numerator is missing. " << key << std::endl;
+      continue;
     }
 
     if (me_total == nullptr) {

@@ -50,7 +50,7 @@ process.configurationMetadata = cms.untracked.PSet(
 
 # Other statements
 from Configuration.AlCa.GlobalTag import GlobalTag
-process.GlobalTag = GlobalTag(process.GlobalTag, 'auto:phase1_2021_realistic', '')
+process.GlobalTag = GlobalTag(process.GlobalTag, 'auto:phase1_2021_cosmics', '')
 
 # Path and EndPath definitions
 process.gem_harvesting_step = cms.Path(process.gemEfficiencyHarvesterSeq)

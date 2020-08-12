@@ -89,7 +89,7 @@ process.gemOfflineMonitor.doDigi = cms.untracked.bool(False)
 #process.mix.playback = True
 #process.mix.digitizers = cms.PSet()
 from Configuration.AlCa.GlobalTag import GlobalTag
-process.GlobalTag = GlobalTag(process.GlobalTag, 'auto:phase1_2021_realistic', '')
+process.GlobalTag = GlobalTag(process.GlobalTag, 'auto:phase1_2021_cosmics', '')
 
 # Path and EndPath definitions
 process.gem_dqm_step = cms.EndPath(process.gemOfflineMonitor + process.gemEfficiencyAnalyzerSeq)
