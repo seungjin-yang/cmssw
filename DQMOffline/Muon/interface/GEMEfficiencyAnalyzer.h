@@ -34,7 +34,7 @@ private:
 
   const std::string getDetName(const DetId&);
   const std::string getDetName(const unsigned int);
-  const unsigned int getDetIdx(unsigned int);
+  const unsigned int getDetIdx(unsigned int, bool verbose=false);
 
   edm::EDGetTokenT<GEMRecHitCollection> rechit_token_;
   edm::EDGetTokenT<edm::View<reco::Muon> > muon_token_;
@@ -44,6 +44,7 @@ private:
   std::string muon_type_str_;
   MuonType muon_type_;
   float residual_x_cut_;
+  bool use_fiducial_cut_;
 
   std::vector<double> pt_binning_;
   int eta_nbins_;
@@ -84,27 +85,33 @@ private:
   MonitorElement* me_debug_normalized_chi2_;
   MonitorElement* me_debug_normalized_chi2_matched_;
 
-  MonitorElement* me_debug_start_state_x_err_;
-  MonitorElement* me_debug_start_state_x_err_matched_;
-
   MonitorElement* me_debug_start_state_x_err_det_;
   MonitorElement* me_debug_start_state_x_err_det_matched_;
 
-  MonitorElement* me_debug_start_state_x_err_det_detail_;
-  MonitorElement* me_debug_start_state_x_err_det_detail_matched_;
-
-  MonitorElement* me_debug_dest_state_x_err_;
-  MonitorElement* me_debug_dest_state_x_err_matched_;
-
   MonitorElement* me_debug_error_propagation_;
-
   MonitorElement* me_debug_num_valid_chambers_per_layer_;
+
   MonitorElement* me_debug_in_out_det_;
   MonitorElement* me_debug_in_out_det_matched_;
 
+  MonitorElement* me_debug_in_out_det_enter_;
+  MonitorElement* me_debug_in_out_det_enter_matched_;
+
+  MonitorElement* me_debug_in_out_det_leave_;
+  MonitorElement* me_debug_in_out_det_leave_matched_;
+
+  MonitorElement* me_debug_unmatched_;
+  MonitorElement* me_debug_unmatched_no_hit_;
+
+  MonitorElement* me_debug_min_residual_x_;
+  MonitorElement* me_debug_min_residual_x_inner_det_;
+
+  unsigned int debug_start_det_idx_;
+
   const std::vector<std::string> det_labels = {
+    "Tracker", "Ecal", "Hcal",
     "GE-1/1",
-    "ME-1/1", "ME-1/2", "ME-1/3",
+    "ME-1/1A", "ME-1/1B", "ME-1/2", "ME-1/3",
     "RE-1/2", "RE-1/3",
     "RE-2/2", "RE-2/3",
     "ME-2/1", "ME-2/2",
