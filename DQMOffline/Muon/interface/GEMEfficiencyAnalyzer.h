@@ -60,6 +60,12 @@ private:
   MEMap1 me_detector_;
   MEMap1 me_detector_matched_;
 
+  MEMap1 me_debug_detector_incoming_;
+  MEMap1 me_debug_detector_incoming_matched_;
+
+  MEMap1 me_debug_detector_outgoing_;
+  MEMap1 me_debug_detector_outgoing_matched_;
+
   MEMap2 me_muon_pt_;
   MEMap2 me_muon_eta_;
   MEMap2 me_muon_phi_;
@@ -94,17 +100,31 @@ private:
   MonitorElement* me_debug_in_out_det_;
   MonitorElement* me_debug_in_out_det_matched_;
 
-  MonitorElement* me_debug_in_out_det_enter_;
-  MonitorElement* me_debug_in_out_det_enter_matched_;
+  MonitorElement* me_debug_in_out_det_incoming_;
+  MonitorElement* me_debug_in_out_det_incoming_matched_;
 
-  MonitorElement* me_debug_in_out_det_leave_;
-  MonitorElement* me_debug_in_out_det_leave_matched_;
+  MonitorElement* me_debug_in_out_det_outgoing_;
+  MonitorElement* me_debug_in_out_det_outgoing_matched_;
+
+  MonitorElement* me_debug_in_dest_det_;
+  MonitorElement* me_debug_in_dest_det_matched_;
+
+  MonitorElement* me_debug_in_dest_det_incoming_;
+  MonitorElement* me_debug_in_dest_det_incoming_matched_;
+
+  MonitorElement* me_debug_in_dest_det_outgoing_;
+  MonitorElement* me_debug_in_dest_det_outgoing_matched_;
 
   MonitorElement* me_debug_unmatched_;
   MonitorElement* me_debug_unmatched_no_hit_;
 
   MonitorElement* me_debug_min_residual_x_;
   MonitorElement* me_debug_min_residual_x_inner_det_;
+
+  MonitorElement* me_debug_ip_incoming_;
+  MonitorElement* me_debug_ip_incoming_matched_;
+  MonitorElement* me_debug_ip_outgoing_;
+  MonitorElement* me_debug_ip_outgoing_matched_;
 
   unsigned int debug_start_det_idx_;
 

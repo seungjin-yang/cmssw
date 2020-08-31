@@ -26,11 +26,11 @@ gemOfflineDQMStaMuons = cms.EDFilter("MuonSelector",
 )
 
 
+# '&& (pt > 20)'
 gemOfflineDQMCosmicMuons = cms.EDFilter("MuonSelector",
     src = cms.InputTag('muonsFromCosmics'),
     cut = cms.string(
         'outerTrack.isNonnull'
-        '&& (pt > 20)'
         '&& (outerTrack.hitPattern.cscStationsWithValidHits > 0)'
     ),
     filter = cms.bool(False)
@@ -70,7 +70,7 @@ gemEfficiencyAnalyzerSta.logCategory = cms.untracked.string('GEMEfficiencyAnalyz
 gemEfficiencyAnalyzerCosmic = gemEfficiencyAnalyzerSta.clone()
 gemEfficiencyAnalyzerCosmic.muonTag = cms.InputTag("gemOfflineDQMCosmicMuons")
 gemEfficiencyAnalyzerCosmic.muonType = cms.untracked.string("Cosmic")
-# gemEfficiencyAnalyzerCosmic.ptBinning = cms.untracked.vdouble(20., 30., 40., 50., 60., 70., 80., 90., 100., 120., 140., 200.)
+gemEfficiencyAnalyzerCosmic.ptBinning = cms.untracked.vdouble(0., 20., 30., 40., 50., 60., 70., 80., 90., 100., 120., 140., 200.)
 gemEfficiencyAnalyzerCosmic.folder = cms.untracked.string('GEM/GEMEfficiency/CosmicMuon')
 gemEfficiencyAnalyzerCosmic.logCategory = cms.untracked.string('GEMEfficiencyAnalyzerCosmic')
 gemEfficiencyAnalyzerCosmic.useFiducialCut = cms.bool(False)

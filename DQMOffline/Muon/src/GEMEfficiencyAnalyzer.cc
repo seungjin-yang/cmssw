@@ -152,36 +152,69 @@ void GEMEfficiencyAnalyzer::bookHistograms(DQMStore::IBooker& ibooker,
       100, 0, 10);
 
 
+  // in-out
   me_debug_in_out_det_ = ibooker.book2D(
-      "in_out_det", "Entering+Leaving;innerDet;outerDet;",
+      "in_out_det", "Incoming+Outgoing;innerDet;outerDet;",
       det_labels.size(), -0.5, det_labels.size() - 0.5,
       det_labels.size(), -0.5, det_labels.size() - 0.5);
 
   me_debug_in_out_det_matched_ = ibooker.book2D(
-      "in_out_det_matched", "Entering+Leaving (Matched);innerDet;outerDet;",
+      "in_out_det_matched", "Incoming+Outgoing (Matched);innerDet;outerDet;",
       det_labels.size(), -0.5, det_labels.size() - 0.5,
       det_labels.size(), -0.5, det_labels.size() - 0.5);
 
-  me_debug_in_out_det_enter_ = ibooker.book2D(
-      "in_out_det_enter", "Entering;innerDet;outerDet;",
+  me_debug_in_out_det_incoming_ = ibooker.book2D(
+      "in_out_det_incoming", "Incoming;innerDet;outerDet;",
       det_labels.size(), -0.5, det_labels.size() - 0.5,
       det_labels.size(), -0.5, det_labels.size() - 0.5);
 
-  me_debug_in_out_det_enter_matched_ = ibooker.book2D(
-      "in_out_det_enter_matched", "Entering (Matched);innerDet;outerDet;",
+  me_debug_in_out_det_incoming_matched_ = ibooker.book2D(
+      "in_out_det_incoming_matched", "Incoming (Matched);innerDet;outerDet;",
       det_labels.size(), -0.5, det_labels.size() - 0.5,
       det_labels.size(), -0.5, det_labels.size() - 0.5);
 
-  me_debug_in_out_det_leave_ = ibooker.book2D(
-      "in_out_det_leave", "Leaving;innerDet;outerDet;",
+  me_debug_in_out_det_outgoing_ = ibooker.book2D(
+      "in_out_det_outgoing", "Outgoing;innerDet;outerDet;",
       det_labels.size(), -0.5, det_labels.size() - 0.5,
       det_labels.size(), -0.5, det_labels.size() - 0.5);
 
-  me_debug_in_out_det_leave_matched_ = ibooker.book2D(
-      "in_out_det_leave_matched", "Leaving (Matched);innerDet;outerDet;",
+  me_debug_in_out_det_outgoing_matched_ = ibooker.book2D(
+      "in_out_det_outgoing_matched", "Outgoing (Matched);innerDet;outerDet;",
       det_labels.size(), -0.5, det_labels.size() - 0.5,
       det_labels.size(), -0.5, det_labels.size() - 0.5);
 
+  // in-dest
+  me_debug_in_dest_det_ = ibooker.book2D(
+      "in_dest_det", "Incoming+Outgoing;innerDet;GEM Chamber;",
+      det_labels.size(), -0.5, det_labels.size() - 0.5,
+      36, 0.5, 36.5);
+
+  me_debug_in_dest_det_matched_ = ibooker.book2D(
+      "in_dest_det_matched", "Incoming+Outgoing (Matched);innerDet;GEM Chamber;",
+      det_labels.size(), -0.5, det_labels.size() - 0.5,
+      36, 0.5, 36.5);
+
+  me_debug_in_dest_det_incoming_ = ibooker.book2D(
+      "in_dest_det_incoming", "Incoming;innerDet;GEM Chamber;",
+      det_labels.size(), -0.5, det_labels.size() - 0.5,
+      36, 0.5, 36.5);
+
+  me_debug_in_dest_det_incoming_matched_ = ibooker.book2D(
+      "in_dest_det_incoming_matched", "Incoming (Matched);innerDet;GEM Chamber;",
+      det_labels.size(), -0.5, det_labels.size() - 0.5,
+      36, 0.5, 36.5);
+
+  me_debug_in_dest_det_outgoing_ = ibooker.book2D(
+      "in_dest_det_outgoing", "Outgoing;innerDet;GEM Chamber;",
+      det_labels.size(), -0.5, det_labels.size() - 0.5,
+      36, 0.5, 36.5);
+
+  me_debug_in_dest_det_outgoing_matched_ = ibooker.book2D(
+      "in_dest_det_outgoing_matched", "Outgoing (Matched);innerDet;GEM Chamber;",
+      det_labels.size(), -0.5, det_labels.size() - 0.5,
+      36, 0.5, 36.5);
+
+  // DEBUG
   me_debug_unmatched_ = ibooker.book1D(
       "unmatched", "Unmatched",
       det_labels.size(), -0.5, det_labels.size() - 0.5);
@@ -195,11 +228,11 @@ void GEMEfficiencyAnalyzer::bookHistograms(DQMStore::IBooker& ibooker,
       me_debug_in_out_det_->setBinLabel(idx + 1, det_labels[idx], axis);
       me_debug_in_out_det_matched_->setBinLabel(idx + 1, det_labels[idx], axis);
 
-      me_debug_in_out_det_enter_->setBinLabel(idx + 1, det_labels[idx], axis);
-      me_debug_in_out_det_enter_matched_->setBinLabel(idx + 1, det_labels[idx], axis);
+      me_debug_in_out_det_incoming_->setBinLabel(idx + 1, det_labels[idx], axis);
+      me_debug_in_out_det_incoming_matched_->setBinLabel(idx + 1, det_labels[idx], axis);
 
-      me_debug_in_out_det_leave_->setBinLabel(idx + 1, det_labels[idx], axis);
-      me_debug_in_out_det_leave_matched_->setBinLabel(idx + 1, det_labels[idx], axis);
+      me_debug_in_out_det_outgoing_->setBinLabel(idx + 1, det_labels[idx], axis);
+      me_debug_in_out_det_outgoing_matched_->setBinLabel(idx + 1, det_labels[idx], axis);
     }
 
     me_debug_start_state_x_err_det_->setBinLabel(idx + 1, det_labels[idx], 1);
@@ -207,7 +240,41 @@ void GEMEfficiencyAnalyzer::bookHistograms(DQMStore::IBooker& ibooker,
 
     me_debug_unmatched_->setBinLabel(idx + 1, det_labels[idx], 1);
     me_debug_unmatched_no_hit_->setBinLabel(idx + 1, det_labels[idx], 1);
+
+    me_debug_in_dest_det_->setBinLabel(idx + 1, det_labels[idx], 1);
+    me_debug_in_dest_det_matched_->setBinLabel(idx + 1, det_labels[idx], 1);
+    me_debug_in_dest_det_incoming_->setBinLabel(idx + 1, det_labels[idx], 1);
+    me_debug_in_dest_det_incoming_matched_->setBinLabel(idx + 1, det_labels[idx], 1);
+    me_debug_in_dest_det_outgoing_->setBinLabel(idx + 1, det_labels[idx], 1);
+    me_debug_in_dest_det_outgoing_matched_->setBinLabel(idx + 1, det_labels[idx], 1);
   }
+
+  for (unsigned int idx = 1; idx <= 36; idx++) {
+    me_debug_in_dest_det_->setBinLabel(idx, std::to_string(idx), 2);
+    me_debug_in_dest_det_matched_->setBinLabel(idx, std::to_string(idx), 2);
+    me_debug_in_dest_det_incoming_->setBinLabel(idx, std::to_string(idx), 2);
+    me_debug_in_dest_det_incoming_matched_->setBinLabel(idx, std::to_string(idx), 2);
+    me_debug_in_dest_det_outgoing_->setBinLabel(idx, std::to_string(idx), 2);
+    me_debug_in_dest_det_outgoing_matched_->setBinLabel(idx, std::to_string(idx), 2);
+
+  }
+
+
+  me_debug_ip_incoming_ = ibooker.book1D(
+    "ip_incoming", "Impact Parameter / Incoming / Denominator;D0;Entries",
+    60, 0, 300);
+
+  me_debug_ip_incoming_matched_ = ibooker.book1D(
+    "ip_incoming_matched", "Impact Parameter / Incoming / Numerator;D0;Entries",
+    60, 0, 300);
+
+  me_debug_ip_outgoing_ = ibooker.book1D(
+    "ip_outgoing", "Impact Parameter / Leaveing / Denominator;D0;Entries",
+    60, 0, 300);
+
+  me_debug_ip_outgoing_matched_ = ibooker.book1D(
+    "ip_outgoing_matched", "Impact Parameter / Leaveing / Numerator;D0;Entries",
+    60, 0, 300);
 
   //////////////////////////////////////////////////////////////////////////////
   //
@@ -263,8 +330,25 @@ void GEMEfficiencyAnalyzer::bookDetectorOccupancy(DQMStore::IBooker& ibooker,
   me_detector_matched_[key] =
       helper.book2D("detector_matched", matched_title_, num_ch, 0.5, num_ch + 0.5, num_etas, 0.5, num_etas + 0.5);
 
+  me_debug_detector_incoming_[key] = helper.book2D("detector_incoming", "Incoming " + title_, num_ch, 0.5, num_ch + 0.5, num_etas, 0.5, num_etas + 0.5);
+
+  me_debug_detector_incoming_matched_[key] =
+      helper.book2D("detector_incoming_matched", "Incoming " + matched_title_, num_ch, 0.5, num_ch + 0.5, num_etas, 0.5, num_etas + 0.5);
+
+  me_debug_detector_outgoing_[key] = helper.book2D("detector_outgoing", "Outgoing " + title_, num_ch, 0.5, num_ch + 0.5, num_etas, 0.5, num_etas + 0.5);
+
+  me_debug_detector_outgoing_matched_[key] =
+      helper.book2D("detector_outgoing_matched", "Outgoing " + matched_title_, num_ch, 0.5, num_ch + 0.5, num_etas, 0.5, num_etas + 0.5);
+
   setDetLabelsEta(me_detector_[key], station);
   setDetLabelsEta(me_detector_matched_[key], station);
+
+  setDetLabelsEta(me_debug_detector_incoming_[key], station);
+  setDetLabelsEta(me_debug_detector_incoming_matched_[key], station);
+
+  setDetLabelsEta(me_debug_detector_outgoing_[key], station);
+  setDetLabelsEta(me_debug_detector_outgoing_matched_[key], station);
+
 }
 
 void GEMEfficiencyAnalyzer::bookOccupancy(DQMStore::IBooker& ibooker,
@@ -408,6 +492,14 @@ void GEMEfficiencyAnalyzer::analyze(const edm::Event& event, const edm::EventSet
       continue;
     }
 
+    const TrajectoryStateClosestToBeamLine&& debug_traj_state_at_beam_line = transient_track.stateAtBeamLine();
+    const Measurement1D&& debug_ip = debug_traj_state_at_beam_line.transverseImpactParameter();
+    double d0 = debug_ip.value();
+    double d0_error = debug_ip.error();
+
+    std::cout << Form("GEM_DEBUG IP: %.4f +- %.4f", d0, d0_error) << std::endl;
+
+
     // NOTE
     TrajectoryStateOnSurface start_state;
     PropagationDirection propagation_direction;
@@ -416,7 +508,7 @@ void GEMEfficiencyAnalyzer::analyze(const edm::Event& event, const edm::EventSet
     unsigned int start_raw_det_id = 0;
     unsigned int inner_det_id = 0;
     unsigned int outer_det_id = 0;
-    bool is_from_outside_to_inside = false;
+    bool is_incoming = false;
 
     switch (muon_type_) {
       case MuonType::kGlobal: {
@@ -469,8 +561,9 @@ void GEMEfficiencyAnalyzer::analyze(const edm::Event& event, const edm::EventSet
           std::swap(p2_in, p2_out);
         }
 
-        is_from_outside_to_inside = p2_out > p2_in;
-        propagation_direction = is_from_outside_to_inside ? PropagationDirection::alongMomentum : PropagationDirection::oppositeToMomentum;
+        is_incoming = p2_out > p2_in;
+
+        propagation_direction = is_incoming ? PropagationDirection::alongMomentum : PropagationDirection::oppositeToMomentum;
         // propagation_direction = PropagationDirection::anyDirection;
         okay = true;
         break;
@@ -508,7 +601,7 @@ void GEMEfficiencyAnalyzer::analyze(const edm::Event& event, const edm::EventSet
 
       if (muon_type_ == MuonType::kCosmic) {
         // cosmic muon
-        if (is_from_outside_to_inside xor is_opposite_region)
+        if (is_incoming xor is_opposite_region)
           continue;
 
       } else {
@@ -535,7 +628,13 @@ void GEMEfficiencyAnalyzer::analyze(const edm::Event& event, const edm::EventSet
         for (const auto [layer_id, layer] : chambers_per_layer) {
           int debug_num_valid_chambers_per_layer = 0;
 
-          for (const GEMChamber* chamber : layer) {            
+          for (const GEMChamber* chamber : layer) {
+
+            // DEBUG
+            // bool is_upper_semicircle = (1 < chamber->id().chamber()) and (chamber->id().chamber() < 19);
+            // if (is_incoming xor is_upper_semicircle)
+            //   continue;
+
             const BoundPlane& bound_plane = chamber->surface();
 
             const auto&& tsos = propagator_map[propagation_direction]->propagate(start_state, bound_plane);
@@ -578,10 +677,18 @@ void GEMEfficiencyAnalyzer::analyze(const edm::Event& event, const edm::EventSet
 
             me_debug_error_propagation_->Fill(start_state_x_err, std::sqrt(tsos_err.xx()));
             me_debug_in_out_det_->Fill(inner_det_idx, outer_det_idx);
-            if (is_from_outside_to_inside)
-              me_debug_in_out_det_enter_->Fill(inner_det_idx, outer_det_idx);
-            else
-              me_debug_in_out_det_leave_->Fill(inner_det_idx, outer_det_idx);
+            me_debug_in_dest_det_->Fill(inner_det_idx, gem_id.chamber());
+            if (is_incoming) {
+              me_debug_in_out_det_incoming_->Fill(inner_det_idx, outer_det_idx);
+              me_debug_in_dest_det_incoming_->Fill(inner_det_idx, gem_id.chamber());
+              me_debug_ip_incoming_->Fill(d0);
+
+            } else {
+              me_debug_in_out_det_outgoing_->Fill(inner_det_idx, outer_det_idx);
+              me_debug_in_dest_det_outgoing_->Fill(inner_det_idx, gem_id.chamber());
+              me_debug_ip_outgoing_->Fill(d0);
+
+            }
 
             debug_num_valid_chambers_per_layer++;
 
@@ -604,6 +711,11 @@ void GEMEfficiencyAnalyzer::analyze(const edm::Event& event, const edm::EventSet
             const unsigned int dest_det_idx = getDetIdx(gem_id.rawId());
 
             fillME(me_detector_, key1, chamber_bin, gem_id.roll());
+            if (is_incoming)
+              fillME(me_debug_detector_incoming_, key1, chamber_bin, gem_id.roll());
+            else
+              fillME(me_debug_detector_outgoing_, key1, chamber_bin, gem_id.roll());
+
             fillME(me_muon_pt_, key2, muon.pt());
             fillME(me_muon_eta_, key2, std::fabs(muon.eta()));
             fillME(me_muon_phi_, key2, muon.phi());
@@ -636,6 +748,12 @@ void GEMEfficiencyAnalyzer::analyze(const edm::Event& event, const edm::EventSet
             const float pull_y = residual_y / std::sqrt(tsos_err.yy() + hit_err.yy());
 
             fillME(me_detector_matched_, key1, chamber_bin, gem_id.roll());
+            if (is_incoming)
+              fillME(me_debug_detector_incoming_matched_, key1, chamber_bin, gem_id.roll());
+            else
+              fillME(me_debug_detector_outgoing_matched_, key1, chamber_bin, gem_id.roll());
+
+
             fillME(me_muon_pt_matched_, key2, muon.pt());
             fillME(me_muon_eta_matched_, key2, std::fabs(muon.eta()));
             fillME(me_muon_phi_matched_, key2, muon.phi());
@@ -653,10 +771,18 @@ void GEMEfficiencyAnalyzer::analyze(const edm::Event& event, const edm::EventSet
             if (has_csc_st4)   me_csc_matched_->Fill(4);
             me_csc_detail_matched_->Fill(csc_detail_bin);
             me_debug_in_out_det_matched_->Fill(inner_det_idx, outer_det_idx);
-            if (is_from_outside_to_inside)
-              me_debug_in_out_det_enter_matched_->Fill(inner_det_idx, outer_det_idx);
-            else
-              me_debug_in_out_det_leave_matched_->Fill(inner_det_idx, outer_det_idx);
+            me_debug_in_dest_det_matched_->Fill(inner_det_idx, gem_id.chamber());
+            if (is_incoming) {
+              me_debug_in_out_det_incoming_matched_->Fill(inner_det_idx, outer_det_idx);
+              me_debug_in_dest_det_incoming_matched_->Fill(inner_det_idx, gem_id.chamber());
+              me_debug_ip_incoming_matched_->Fill(d0);
+
+            } else {
+              me_debug_in_out_det_outgoing_matched_->Fill(inner_det_idx, outer_det_idx);
+              me_debug_in_dest_det_outgoing_matched_->Fill(inner_det_idx, gem_id.chamber());
+              me_debug_ip_outgoing_matched_->Fill(d0);
+
+            }
 
             me_debug_start_state_x_err_det_matched_->Fill(start_det_idx, start_state_x_err);
             me_debug_normalized_chi2_matched_->Fill(track->normalizedChi2());
