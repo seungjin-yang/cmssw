@@ -195,6 +195,16 @@ FEVTEventContent.outputCommands.extend(EvtScalersRECO.outputCommands)
 FEVTEventContent.outputCommands.extend(OnlineMetaDataContent.outputCommands)
 FEVTEventContent.outputCommands.extend(TcdsEventContent.outputCommands)
 
+from Configuration.Eras.Modifier_phase2_muon_cff import phase2_muon
+from Configuration.Eras.Modifier_run2_GEM_2017_cff import run2_GEM_2017
+from Configuration.Eras.Modifier_run3_GEM_cff import run3_GEM
+phase2_muon.toModify(FEVTEventContent,
+    outputCommands = FEVTEventContent.outputCommands + ['keep *_muonGEMDigis_*_*'])
+run2_GEM_2017.toModify(FEVTEventContent,
+    outputCommands = FEVTEventContent.outputCommands + ['keep *_muonGEMDigis_*_*'])
+run3_GEM.toModify(FEVTEventContent,
+    outputCommands = FEVTEventContent.outputCommands + ['keep *_muonGEMDigis_*_*'])
+
 FEVTHLTALLEventContent.outputCommands.extend(FEVTEventContent.outputCommands)
 FEVTHLTALLEventContent.outputCommands.append('keep *_*_*_HLT')
 
