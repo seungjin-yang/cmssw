@@ -4,6 +4,11 @@
 #include "TrackingTools/TransientTrack/interface/TransientTrackBuilder.h"
 #include "TrackingTools/Records/interface/TransientTrackRecord.h"
 #include "DataFormats/Math/interface/deltaPhi.h"
+#include "DataFormats/GeometryCommonDetAlgo/interface/ErrorFrameTransformer.h"
+#include "DataFormats/GeometrySurface/interface/SimpleDiskBounds.h"
+
+#include "TVector2.h"
+
 
 GEMEfficiencyAnalyzer::GEMEfficiencyAnalyzer(const edm::ParameterSet& pset) : GEMOfflineDQMBase(pset) {
   rechit_token_ = consumes<GEMRecHitCollection>(pset.getParameter<edm::InputTag>("recHitTag"));
@@ -14,7 +19,7 @@ GEMEfficiencyAnalyzer::GEMEfficiencyAnalyzer(const edm::ParameterSet& pset) : GE
 
   use_global_muon_ = pset.getUntrackedParameter<bool>("useGlobalMuon");
 
-  residual_x_cut_ = static_cast<float>(pset.getParameter<double>("residualXCut"));
+  rdphi_cut_ = static_cast<float>(pset.getParameter<double>("RDeltaPhiCut"));
 
   pt_binning_ = pset.getUntrackedParameter<std::vector<double> >("ptBinning");
   eta_nbins_ = pset.getUntrackedParameter<int>("etaNbins");
@@ -23,11 +28,35 @@ GEMEfficiencyAnalyzer::GEMEfficiencyAnalyzer(const edm::ParameterSet& pset) : GE
 
   folder_ = pset.getUntrackedParameter<std::string>("folder");
 
+  // FIXME looks ugly
   title_ = (use_global_muon_ ? "Global Muon" : "Standalone Muon");
-  matched_title_ = title_ + TString::Format(" (|x_{Muon} - x_{Hit}| < %.1f)", residual_x_cut_);
+  matched_title_ = title_ + TString::Format(" (R#times|#phi_{Muon} - #phi_{Hit}| < %.1f)", rdphi_cut_);
 }
 
 GEMEfficiencyAnalyzer::~GEMEfficiencyAnalyzer() {}
+
+void GEMEfficiencyAnalyzer::fillDescriptions(edm::ConfigurationDescriptions& descriptions) {
+  edm::ParameterSetDescription desc;
+
+  desc.add<edm::InputTag>("recHitTag", edm::InputTag("gemRecHits"));
+  desc.add<edm::InputTag>("muonTag", edm::InputTag("muons")); // FIXME
+  {
+    edm::ParameterSetDescription psd0;
+    psd0.setAllowAnything();
+    desc.add<edm::ParameterSetDescription>("ServiceParameters", psd0);
+  }
+  desc.add<double>("RDeltaPhiCut", 5.0); // TODO need to be tuned
+  desc.addUntracked<std::vector<double> >("ptBinning", {20. ,30., 40., 50., 60., 70., 80., 90., 100., 120., 140., 200.});
+  desc.addUntracked<int>("etaNbins", 7);
+  desc.addUntracked<double>("etaLow", 1.5);
+  desc.addUntracked<double>("etaUp", 2.2);
+
+  desc.addUntracked<bool>("useGlobalMuon", true); // FIXME looks ugly..
+  desc.addUntracked<std::string>("folder", "GEM/GEMEfficiency/GEMEfficiencyAnalyzer"); // FIXME
+  desc.addUntracked<std::string>("logCategory", "GEMEfficiencyAnalyzer"); // FIXME
+
+  descriptions.add("gemEfficiencyAnalyzerDefault", desc);
+}
 
 void GEMEfficiencyAnalyzer::bookHistograms(DQMStore::IBooker& ibooker,
                                            edm::Run const& run,
@@ -48,38 +77,17 @@ void GEMEfficiencyAnalyzer::bookHistograms(DQMStore::IBooker& ibooker,
 
       const MEMapKey1 key1{region_number, station_number};
       const auto&& station_name_suffix = TString::Format("_ge%s%d1", region_sign, station_number);
-      const auto&& station_title_suffix = TString::Format(" : GE %s%d/1", region_sign, station_number);
+      const auto&& station_title_suffix = TString::Format(" : GE%s%d/1", region_sign, station_number);
       bookDetectorOccupancy(ibooker, station, key1, station_name_suffix, station_title_suffix);
+      bookOccupancy(ibooker, key1, station_name_suffix, station_title_suffix);
 
       const int num_etas = getNumEtaPartitions(station);
-
-      if (station_number == 1) {
-        for (const bool is_odd : {true, false}) {
-          std::tuple<int, int, bool> key2{region_number, station_number, is_odd};
-          const TString&& parity_name_suffix = station_name_suffix + (is_odd ? "_odd" : "_even");
-          const TString&& parity_title_suffix =
-              station_title_suffix + (is_odd ? ", Odd Superchamber" : ", Even Superchamber");
-          bookOccupancy(ibooker, key2, parity_name_suffix, parity_title_suffix);
-
-          for (int ieta = 1; ieta <= num_etas; ieta++) {
-            const TString&& ieta_name_suffix = parity_name_suffix + Form("_ieta%d", ieta);
-            const TString&& ieta_title_suffix = parity_title_suffix + Form(", i#eta = %d", ieta);
-            const MEMapKey3 key3{region_number, station_number, is_odd, ieta};
-            bookResolution(ibooker, key3, ieta_name_suffix, ieta_title_suffix);
-          }  // ieta
-        }    // is_odd
-
-      } else {
-        std::tuple<int, int, bool> key2{region_number, station_number, false};
-        bookOccupancy(ibooker, key2, station_name_suffix, station_title_suffix);
-
-        for (int ieta = 1; ieta <= num_etas; ieta++) {
-          const MEMapKey3 key3{region_number, station_number, false, ieta};
-          const TString&& ieta_name_suffix = station_name_suffix + Form("_ieta%d", ieta);
-          const TString&& ieta_title_suffix = station_title_suffix + Form(", i#eta = %d", ieta);
-          bookResolution(ibooker, key3, ieta_name_suffix, ieta_title_suffix);
-        }  // ieta
-      }
+      for (int ieta = 1; ieta <= num_etas; ieta++) {
+        const MEMapKey2 key2{region_number, station_number, ieta};
+        const TString&& ieta_name_suffix = station_name_suffix + Form("_ieta%d", ieta);
+        const TString&& ieta_title_suffix = station_title_suffix + Form(", i#eta = %d", ieta);
+        bookResolution(ibooker, key2, ieta_name_suffix, ieta_title_suffix);
+      }  // ieta
     }  // station
   }    // region
 }
@@ -113,7 +121,7 @@ void GEMEfficiencyAnalyzer::bookDetectorOccupancy(DQMStore::IBooker& ibooker,
 }
 
 void GEMEfficiencyAnalyzer::bookOccupancy(DQMStore::IBooker& ibooker,
-                                          const MEMapKey2& key,
+                                          const MEMapKey1& key,
                                           const TString& name_suffix,
                                           const TString& title_suffix) {
   ibooker.setCurrentFolder(folder_ + "/Efficiency");
@@ -121,25 +129,27 @@ void GEMEfficiencyAnalyzer::bookOccupancy(DQMStore::IBooker& ibooker,
 
   me_muon_pt_[key] = helper.book1D("muon_pt", title_, pt_binning_, "Muon p_{T} [GeV]");
   me_muon_eta_[key] = helper.book1D("muon_eta", title_, eta_nbins_, eta_low_, eta_up_, "Muon |#eta|");
+  me_muon_phi_[key] = helper.book1D("muon_phi", title_, 108, -5., 355., "Muon #phi^{#circ}");
 
   me_muon_pt_matched_[key] = helper.book1D("muon_pt_matched", matched_title_, pt_binning_, "Muon p_{T} [GeV]");
   me_muon_eta_matched_[key] =
       helper.book1D("muon_eta_matched", matched_title_, eta_nbins_, eta_low_, eta_up_, "Muon |#eta|");
+  me_muon_phi_matched_[key] =
+      helper.book1D("muon_phi_matched", matched_title_, 108, -5., 355., "Muon #phi^{#circ}");
+
 }
 
 void GEMEfficiencyAnalyzer::bookResolution(DQMStore::IBooker& ibooker,
-                                           const MEMapKey3& key,
+                                           const MEMapKey2& key,
                                            const TString& name_suffix,
                                            const TString& title_suffix) {
   ibooker.setCurrentFolder(folder_ + "/Resolution");
   BookingHelper helper(ibooker, name_suffix, title_suffix);
 
-  // NOTE Residual & Pull
-  me_residual_x_[key] = helper.book1D("residual_x", title_, 50, -5.0, 5.0, "Residual in Local X [cm]");
+  me_residual_rdphi_[key] = helper.book1D("residual_rdphi", title_, 50, -5.0, 5.0, "Residual R#Delta#phi [cm]");
   me_residual_y_[key] = helper.book1D("residual_y", title_, 60, -12.0, 12.0, "Residual in Local Y [cm]");
-  me_residual_phi_[key] = helper.book1D("residual_phi", title_, 80, -0.008, 0.008, "Residual in Global #phi [rad]");
 
-  me_pull_x_[key] = helper.book1D("pull_x", title_, 60, -3.0, 3.0, "Pull in Local X");
+  me_pull_rdphi_[key] = helper.book1D("pull_rdphi", title_, 60, -3.0, 3.0, "Pull R#Delta#phi");
   me_pull_y_[key] = helper.book1D("pull_y", title_, 60, -3.0, 3.0, "Pull in Local Y");
 }
 
@@ -178,6 +188,8 @@ void GEMEfficiencyAnalyzer::analyze(const edm::Event& event, const edm::EventSet
     return;
   }
 
+  const auto&& surface_vector = buildSurfaces(gem);
+
   for (const reco::Muon& muon : *muon_view) {
     const reco::Track* track = nullptr;
 
@@ -199,83 +211,175 @@ void GEMEfficiencyAnalyzer::analyze(const edm::Event& event, const edm::EventSet
       continue;
     }
 
-    for (const GEMEtaPartition* eta_partition : gem->etaPartitions()) {
+    for (auto [surface, chamber_vector] : surface_vector) {
       // Skip propagation inn the opposite direction.
-      if (muon.eta() * eta_partition->id().region() < 0)
+      if (muon.eta() * (*surface).eta() < 0)
         continue;
 
-      const BoundPlane& bound_plane = eta_partition->surface();
-
       const TrajectoryStateOnSurface&& tsos =
-          propagator->propagate(transient_track.outermostMeasurementState(), bound_plane);
+          propagator->propagate(transient_track.outermostMeasurementState(), *surface);
       if (not tsos.isValid()) {
         continue;
       }
 
       const LocalPoint&& tsos_local_pos = tsos.localPosition();
       const LocalPoint tsos_local_pos_2d(tsos_local_pos.x(), tsos_local_pos.y(), 0.0f);
-      if (not bound_plane.bounds().inside(tsos_local_pos_2d)) {
+      if (not (*surface).bounds().inside(tsos_local_pos_2d)) {
         continue;
       }
 
+      const GlobalPoint&& tsos_global_pos = tsos.globalPosition();
+      const GEMEtaPartition* eta_partition = findEtaPartition(tsos_global_pos, chamber_vector);
+
       const GEMDetId&& gem_id = eta_partition->id();
 
-      bool is_odd = gem_id.station() == 1 ? (gem_id.chamber() % 2 == 1) : false;
-      const std::tuple<int, int> key1{gem_id.region(), gem_id.station()};
-      const std::tuple<int, int, bool> key2{gem_id.region(), gem_id.station(), is_odd};
-      const std::tuple<int, int, bool, int> key3{gem_id.region(), gem_id.station(), is_odd, gem_id.roll()};
+      const MEMapKey1 key1{gem_id.region(), gem_id.station()};
+      const MEMapKey2 key2{gem_id.region(), gem_id.station(), gem_id.roll()};
 
       const int chamber_bin = getDetOccXBin(gem_id, gem);
 
-      fillME(me_detector_, key1, chamber_bin, gem_id.roll());
-      fillME(me_muon_pt_, key2, muon.pt());
-      fillME(me_muon_eta_, key2, std::fabs(muon.eta()));
+      const float muon_abs_eta = std::fabs(muon.eta());
+      const float muon_phi_degree = toDegree(muon.phi());
 
-      const GEMRecHit* matched_hit = findMatchedHit(tsos_local_pos.x(), rechit_collection->get(gem_id));
+      fillME(me_detector_, key1, chamber_bin, gem_id.roll());
+      fillME(me_muon_pt_, key1, muon.pt());
+      fillME(me_muon_eta_, key1, muon_abs_eta);
+      fillME(me_muon_phi_, key1, muon_phi_degree);
+
+      const GEMRecHit* matched_hit = findMatchedHit(
+          tsos_global_pos, rechit_collection->get(gem_id), eta_partition);
+
       if (matched_hit == nullptr) {
         continue;
       }
 
       fillME(me_detector_matched_, key1, chamber_bin, gem_id.roll());
-      fillME(me_muon_pt_matched_, key2, muon.pt());
-      fillME(me_muon_eta_matched_, key2, std::fabs(muon.eta()));
+      fillME(me_muon_pt_matched_, key1, muon.pt());
+      fillME(me_muon_eta_matched_, key1, muon_abs_eta);
+      fillME(me_muon_phi_matched_, key1, muon_phi_degree);
 
       const LocalPoint&& hit_local_pos = matched_hit->localPosition();
       const GlobalPoint&& hit_global_pos = eta_partition->toGlobal(hit_local_pos);
-      const GlobalPoint&& tsos_global_pos = tsos.globalPosition();
 
-      const float residual_x = tsos_local_pos.x() - hit_local_pos.x();
+      // FIXME got the following error
+      // const float dphi = reco::deltaPhi(tsos_global_pos.phi(), hit_global_pos.phi());
+      // /cvmfs/cms.cern.ch/slc7_amd64_gcc820/cms/cmssw/CMSSW_11_2_0_pre10/src/DataFormats/Math/interface/deltaPhi.h:19:17:
+      // the type 'const Geom::Phi<float, Geom::MinusPiToPi>' of 'constexpr' variable 'o2pi' is not literal
+      const float dphi = TVector2::Phi_mpi_pi(tsos_global_pos.barePhi() - hit_global_pos.barePhi());
+      const float residual_rdphi = tsos_global_pos.perp() * dphi;
       const float residual_y = tsos_local_pos.y() - hit_local_pos.y();
-      const float residual_phi = reco::deltaPhi(tsos_global_pos.barePhi(), hit_global_pos.barePhi());
 
-      const LocalError&& tsos_err = tsos.localError().positionError();
-      const LocalError&& hit_err = matched_hit->localPositionError();
+      const LocalError&& tsos_local_err = tsos.localError().positionError();
+      const LocalError&& hit_local_err = matched_hit->localPositionError();
 
-      const float pull_x = residual_x / std::sqrt(tsos_err.xx() + hit_err.xx());
-      const float pull_y = residual_y / std::sqrt(tsos_err.yy() + hit_err.yy());
+      const BoundPlane& bound_plane = eta_partition->surface();
+      const GlobalError& tsos_global_err = ErrorFrameTransformer().transform(tsos_local_err, bound_plane);
+      const GlobalError& hit_global_err = ErrorFrameTransformer().transform(hit_local_err, bound_plane);
 
-      fillME(me_residual_x_, key3, residual_x);
-      fillME(me_residual_y_, key3, residual_y);
-      fillME(me_residual_phi_, key3, residual_phi);
+      const float global_phi_err = std::hypot(tsos_global_err.phierr(tsos_global_pos), hit_global_err.phierr(hit_global_pos));
 
-      fillME(me_pull_x_, key3, pull_x);
-      fillME(me_pull_y_, key3, pull_y);
+      const float pull_rdphi = residual_rdphi / global_phi_err;
+      const float pull_y = residual_y / std::sqrt(tsos_local_err.yy() + hit_local_err.yy());
+
+      fillME(me_residual_rdphi_, key2, residual_rdphi);
+      fillME(me_residual_y_, key2, residual_y);
+
+      fillME(me_pull_rdphi_, key2, pull_rdphi);
+      fillME(me_pull_y_, key2, pull_y);
     }  // GEMChamber
   }    // Muon
 }
 
-const GEMRecHit* GEMEfficiencyAnalyzer::findMatchedHit(const float track_local_x,
-                                                       const GEMRecHitCollection::range& range) {
-  float min_residual_x{residual_x_cut_};
+const GEMRecHit* GEMEfficiencyAnalyzer::findMatchedHit(
+    const GlobalPoint& tsos_global_pos,
+    const GEMRecHitCollection::range& range,
+    const GEMEtaPartition* eta_partition) {
+
+  const float tsos_r = tsos_global_pos.perp();
+  const float tsos_phi = tsos_global_pos.phi();
+
   const GEMRecHit* closest_hit = nullptr;
+  float min_rdphi{rdphi_cut_};
 
   for (auto hit = range.first; hit != range.second; ++hit) {
-    float residual_x = std::fabs(track_local_x - hit->localPosition().x());
-    if (residual_x <= min_residual_x) {
-      min_residual_x = residual_x;
+    const GlobalPoint&& hit_global_pos = eta_partition->toGlobal(hit->localPosition());
+    const float dphi = tsos_phi - hit_global_pos.phi();
+    const float rdphi = std::fabs(tsos_r * dphi);
+    if (rdphi <= min_rdphi) {
+      min_rdphi = rdphi;
       closest_hit = &(*hit);
     }
   }
 
   return closest_hit;
+}
+
+
+std::vector<std::pair<ReferenceCountingPointer<Disk>, std::vector<const GEMChamber*> > >
+GEMEfficiencyAnalyzer::buildSurfaces(const edm::ESHandle<GEMGeometry>& gem) {
+  std::vector<std::pair<ReferenceCountingPointer<Disk>, std::vector<const GEMChamber*> > > disk_vector;
+
+  for (const GEMRegion* region : gem->regions()) {
+    for (const GEMStation* station : region->stations()) {
+
+      // layer - chambers
+      std::map<int, std::vector<const GEMChamber*> > tmp_data;
+      for (const GEMSuperChamber* super_chamber : station->superChambers()) {
+        for (const GEMChamber* chamber : super_chamber->chambers()) {
+          const int layer_id = chamber->id().layer();
+
+          if (tmp_data.find(layer_id) == tmp_data.end())
+            tmp_data.insert({layer_id, std::vector<const GEMChamber*>()});
+
+          tmp_data[layer_id].push_back(chamber);
+        } // GEMChamber
+      } // GEMSuperChamber
+
+      for (auto [layer_id, chamber_vector] : tmp_data) {
+        const GEMChamber* chamber = chamber_vector.front();
+
+        Surface::PositionType position(0.f, 0.f, chamber->position().z());
+        Surface::RotationType rotation;
+
+        auto [rmin, rmax] = chamber->surface().rSpan();
+        auto [zmin, zmax] = chamber->surface().zSpan();
+        auto bounds = new SimpleDiskBounds(rmin, rmax, zmin, zmax);
+
+        ReferenceCountingPointer<Disk> disk(new Disk(position, rotation, bounds));
+
+        disk_vector.emplace_back(disk, chamber_vector);
+
+      } // layer
+    } // GEMStation
+  } // GEMRegion
+
+  return disk_vector;
+}
+
+
+const GEMEtaPartition* GEMEfficiencyAnalyzer::findEtaPartition(
+    const GlobalPoint& global_point,
+    const std::vector<const GEMChamber*>& chamber_vector) {
+
+  const GEMEtaPartition* bound = nullptr;
+  for (const GEMChamber* chamber : chamber_vector) {
+    if (not checkBounds(global_point, chamber)) 
+      continue;
+
+    for (const GEMEtaPartition* eta_partition : chamber->etaPartitions()) {
+      if (checkBounds(global_point, eta_partition)) {
+        bound = eta_partition;
+        break;
+      }
+    } // GEMEtaPartition
+  } // GEMChamber
+
+  return bound;
+}
+
+
+bool GEMEfficiencyAnalyzer::checkBounds(const GlobalPoint& global_point, const GeomDet* det) {
+  const LocalPoint&& local_point = det->toLocal(global_point);
+  const LocalPoint local_point_2d(local_point.x(), local_point.y(), 0.0f);
+  return det->surface().bounds().inside(local_point_2d);
 }

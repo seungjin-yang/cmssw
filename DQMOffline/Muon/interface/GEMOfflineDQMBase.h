@@ -13,11 +13,9 @@ public:
   explicit GEMOfflineDQMBase(const edm::ParameterSet&);
 
   typedef std::tuple<int, int> MEMapKey1;             // (region, station)
-  typedef std::tuple<int, int, bool> MEMapKey2;       // (region, station, is odd superchamber)
-  typedef std::tuple<int, int, bool, int> MEMapKey3;  // (region, station, is odd superchamber, ieta)
+  typedef std::tuple<int, int, int> MEMapKey2;  // (region, station, ieta)
   typedef std::map<MEMapKey1, MonitorElement*> MEMap1;
   typedef std::map<MEMapKey2, MonitorElement*> MEMap2;
-  typedef std::map<MEMapKey3, MonitorElement*> MEMap3;
 
   inline int getVFATNumber(const int, const int, const int);
   inline int getVFATNumberByStrip(const int, const int, const int);
@@ -41,6 +39,8 @@ public:
 
   template <typename T>
   inline bool checkRefs(const std::vector<T*>&);
+
+  inline float toDegree(float radian);
 
   std::string log_category_;
 
@@ -115,10 +115,17 @@ inline int GEMOfflineDQMBase::getVFATNumber(const int station, const int ieta, c
 inline int GEMOfflineDQMBase::getVFATNumberByStrip(const int station, const int ieta, const int strip) {
   const int vfat_phi = (strip % GEMeMap::maxChan_) ? strip / GEMeMap::maxChan_ + 1 : strip / GEMeMap::maxChan_;
   return getVFATNumber(station, ieta, vfat_phi);
-};
+}
 
 inline int GEMOfflineDQMBase::getDetOccXBin(const int chamber, const int layer, const int n_chambers) {
   return n_chambers * (chamber - 1) + layer;
+}
+
+inline float GEMOfflineDQMBase::toDegree(float radian) {
+  float degree = radian / M_PI * 180.f;
+  if (degree < -5.f)
+    degree += 360.f;
+  return degree;
 }
 
 template <typename T>
@@ -136,17 +143,10 @@ TString GEMOfflineDQMBase::convertKeyToStr(const AnyKey& key) {
     return TString::Format("Region %d, Station %d.", std::get<0>(key), std::get<1>(key));
 
   } else if constexpr (std::is_same_v<AnyKey, MEMapKey2>) {
-    const char* superchamber_type = std::get<2>(key) ? "Odd" : "Even";
-    return TString::Format(
-        "Region %d, Station %d, %s Superchamber", std::get<0>(key), std::get<1>(key), superchamber_type);
-
-  } else if constexpr (std::is_same_v<AnyKey, MEMapKey3>) {
-    const char* superchamber_type = std::get<2>(key) ? "Odd" : "Even";
-    return TString::Format("Region %d, Station %d, %s Superchamber, Roll %d",
+    return TString::Format("Region %d, Station %d, Roll %d",
                            std::get<0>(key),
                            std::get<1>(key),
-                           superchamber_type,
-                           std::get<3>(key));
+                           std::get<2>(key));
 
   } else {
     return TString::Format("unknown key type: %s", typeid(key).name());
@@ -177,5 +177,7 @@ void GEMOfflineDQMBase::fillME(std::map<AnyKey, MonitorElement*>& me_map,
     me_map[key]->Fill(x, y);
   }
 }
+
+
 
 #endif  // DQMOffline_Muon_GEMOfflineDQMBase_h

@@ -11,6 +11,26 @@ GEMEfficiencyHarvester::GEMEfficiencyHarvester(const edm::ParameterSet& pset) {
 
 GEMEfficiencyHarvester::~GEMEfficiencyHarvester() {}
 
+
+/* TODO how about this style?
+GEMEfficiencyHarvester::fillDescriptions(edm::ConfigurationDescriptions& descriptions) {
+  {
+    // gemEfficiencyHarvesterSTA
+    edm::ParameterSetDescription desc;
+    desc.addUntracked<std::string>("folder", "GEM/GEMEfficiency/StandaloneMuon");
+    desc.addUntracked<std::string>("logCategory", "GEMEfficiencyHarvesterSTA");
+    descriptions.add("gemEfficiencyHarvesterSTA", desc);
+  }
+  {
+    // gemEfficiencyHarvesterTight
+    edm::ParameterSetDescription desc;
+    desc.addUntracked<std::string>("folder", "GEM/GEMEfficiency/TightGlobalMuon");
+    desc.addUntracked<std::string>("logCategory", "GEMEfficiencyHarvesterTight");
+    descriptions.add("gemEfficiencyHarvesterTight", desc);
+  }
+}
+*/
+
 TProfile* GEMEfficiencyHarvester::computeEfficiency(
     const TH1F* passed, const TH1F* total, const char* name, const char* title, const double confidence_level) {
   if (not TEfficiency::CheckConsistency(*passed, *total)) {
@@ -199,7 +219,7 @@ std::vector<std::string> GEMEfficiencyHarvester::splitString(std::string name, c
   return tokens;
 }
 
-std::tuple<std::string, int, bool, int> GEMEfficiencyHarvester::parseResidualName(const std::string org_name,
+std::tuple<std::string, int, int> GEMEfficiencyHarvester::parseResidualName(const std::string org_name,
                                                                                   const std::string prefix) {
   std::string name = org_name;
 
@@ -211,8 +231,8 @@ std::tuple<std::string, int, bool, int> GEMEfficiencyHarvester::parseResidualNam
   const std::vector<std::string>&& tokens = splitString(name, "_");
   const size_t num_tokens = tokens.size();
 
-  if ((num_tokens != 2) and (num_tokens != 3)) {
-    return std::make_tuple("", -1, false, -1);
+  if (num_tokens != 2) {
+    return std::make_tuple("", -1, -1);
   }
 
   // station != 1
@@ -220,24 +240,11 @@ std::tuple<std::string, int, bool, int> GEMEfficiencyHarvester::parseResidualNam
 
   TString station_str = tokens.front().substr(1, 1);
   TString ieta_str = tokens.back().substr(4, 1);
-  TString superchamber_str = (num_tokens == 3) ? tokens[1] : "";
 
   int station = station_str.IsDigit() ? station_str.Atoi() : -1;
   int ieta = ieta_str.IsDigit() ? ieta_str.Atoi() : -1;
 
-  bool is_odd;
-  if (station == 1) {
-    if (superchamber_str.EqualTo("odd"))
-      is_odd = true;
-    else if (superchamber_str.EqualTo("even"))
-      is_odd = false;
-    else
-      return std::make_tuple("", -1, false, -1);
-  } else {
-    is_odd = false;
-  }
-
-  return std::make_tuple(region_sign, station, is_odd, ieta);
+  return std::make_tuple(region_sign, station, ieta);
 }
 
 void GEMEfficiencyHarvester::doResolution(DQMStore::IBooker& ibooker,
@@ -248,7 +255,12 @@ void GEMEfficiencyHarvester::doResolution(DQMStore::IBooker& ibooker,
   igetter.setCurrentFolder(resolution_folder);
   ibooker.setCurrentFolder(resolution_folder);
 
-  std::map<std::tuple<std::string, int, bool>, std::vector<std::pair<int, TH1F*> > > res_data;
+  // (histogram, (region_sign, station), ieta)
+  std::vector<std::tuple<const TH1F*, std::pair<std::string, int>, int> > hist_vector;
+  // (region_sign, station)
+  std::vector<std::pair<std::string, int> > re_st_vec;
+  // ieta
+  std::vector<int> ieta_vec;
 
   for (const std::string& name : igetter.getMEs()) {
     if (name.find(prefix) == std::string::npos)
@@ -261,73 +273,107 @@ void GEMEfficiencyHarvester::doResolution(DQMStore::IBooker& ibooker,
       continue;
     }
 
-    TH1F* hist = me->getTH1F();
+    const TH1F* hist = me->getTH1F();
     if (hist == nullptr) {
       edm::LogError(log_category_) << "failed to get TH1F" << std::endl;
       continue;
     }
 
-    auto&& [region_sign, station, is_odd, ieta] = parseResidualName(name, prefix);
+    auto&& [region_sign, station, ieta] = parseResidualName(name, prefix);
     if (region_sign.empty() or station < 0 or ieta < 0) {
       edm::LogError(log_category_) << "failed to parse the name of the residual histogram: " << name << std::endl;
       continue;
     }
+    std::pair<std::string, int> region_station(region_sign, station);
 
-    const std::tuple<std::string, int, bool> key{region_sign, station, is_odd};
-
-    if (res_data.find(key) == res_data.end()) {
-      res_data.insert({key, std::vector<std::pair<int, TH1F*> >()});
-    }
-    res_data[key].emplace_back(ieta, hist);
+    hist_vector.emplace_back(hist, region_station, ieta);
+    if (std::find(re_st_vec.begin(), re_st_vec.end(), region_station) == re_st_vec.end())
+      re_st_vec.push_back(region_station);
+    if (std::find(ieta_vec.begin(), ieta_vec.end(), ieta) == ieta_vec.end())
+      ieta_vec.push_back(ieta);
   }  // MonitorElement
 
   //////////////////////////////////////////////////////////////////////////////
   // NOTE
   //////////////////////////////////////////////////////////////////////////////
-  for (auto [key, ieta_data] : res_data) {
-    if (ieta_data.empty()) {
-      continue;
+
+  // GE-2/1, GE-1/1, GE-0/1, GE+0/1, GE+1/1, GE+2/1
+  auto f_sort = [](const std::pair<std::string, int>& lhs, const std::pair<std::string, int>& rhs) -> bool {
+    if (lhs.first == rhs.first) {
+      if (lhs.first == "-")
+        return lhs.second > rhs.second;
+      else
+        return lhs.second < rhs.second;
+
+    } else {
+      return (lhs.first == "-");
+
     }
+  };
 
-    TString tmp_title{ieta_data.front().second->GetTitle()};
-    const TObjArray* tokens = tmp_title.Tokenize(":");
-    TString title = dynamic_cast<TObjString*>(tokens->At(0))->GetString();
+  std::sort(re_st_vec.begin(), re_st_vec.end(), f_sort);
+  std::sort(ieta_vec.begin(), ieta_vec.end());
 
-    auto&& [region_sign, station, is_odd] = key;
-    TString&& name = TString::Format("%s_ge%s%d1", prefix.data(), region_sign.c_str(), station);
-    title += TString::Format("GE %s%d/1", region_sign.c_str(), station);
-    if (station == 1) {
-      name += (is_odd ? "_odd" : "_even");
-      title += (is_odd ? ", Odd Superchambers" : ", Even Superchambers");
-    }
+  const int num_st = re_st_vec.size();
+  const int num_ieta = ieta_vec.size();
 
-    const int num_etas = ieta_data.size();
+  //////////////////////////////////////////////////////////////////////////////
+  // NOTE
+  //////////////////////////////////////////////////////////////////////////////
+  TString tmp_title{std::get<0>(hist_vector.front())->GetTitle()};
+  const TObjArray* tokens = tmp_title.Tokenize(":");
 
-    TH2F* profile = new TH2F(name, title, num_etas, 0.5, num_etas + 0.5, 2, -0.5, 1.5);
-    auto x_axis = profile->GetXaxis();
+  TString title = dynamic_cast<TObjString*>(tokens->At(0))->GetString();
 
-    x_axis->SetTitle("i#eta");
-    for (int ieta = 1; ieta <= num_etas; ieta++) {
-      const std::string&& label = std::to_string(ieta);
-      x_axis->SetBinLabel(ieta, label.c_str());
-    }
+  const char* h_mean_name = Form("%s_mean", prefix.c_str());
+  const char* h_stddev_name = Form("%s_stddev", prefix.c_str());
+  const char* h_skewness_name = Form("%s_skewness", prefix.c_str());
 
-    profile->GetYaxis()->SetBinLabel(1, "Mean");
-    profile->GetYaxis()->SetBinLabel(2, "Std. Dev.");
+  TH2F* h_mean = new TH2F(h_mean_name, title,
+                          num_st, 0.5, num_st + 0.5,
+                          num_ieta, 0.5, num_ieta + 0.5);
 
-    for (auto [ieta, hist] : ieta_data) {
-      profile->SetBinContent(ieta, 1, hist->GetMean());
-      profile->SetBinContent(ieta, 2, hist->GetStdDev());
-
-      profile->SetBinError(ieta, 1, hist->GetMeanError());
-      profile->SetBinError(ieta, 2, hist->GetStdDevError());
-    }
-
-    ibooker.book2D(name, profile);
+  // x-axis
+  h_mean->GetXaxis()->SetTitle("i#eta");
+  for (unsigned int idx = 0; idx < ieta_vec.size(); idx++) {
+    const int xbin = idx + 1;
+    const char* label = Form("%d", ieta_vec[idx]);
+    h_mean->GetXaxis()->SetBinLabel(xbin, label);
   }
+
+  // y-axis
+  for (unsigned int idx = 0; idx < re_st_vec.size(); idx++) {
+    auto [region_sign, station] = re_st_vec[idx];
+    const char* label = Form("GE%s%d/1", region_sign.c_str(), station);
+    const int ybin = idx + 1;
+    h_mean->GetYaxis()->SetBinLabel(ybin, label);
+  }
+
+  TH2F* h_stddev = dynamic_cast<TH2F*>(h_mean->Clone(h_stddev_name));
+  TH2F* h_skewness = dynamic_cast<TH2F*>(h_mean->Clone(h_skewness_name));
+
+  //////////////////////////////////////////////////////////////////////////////
+  // NOTE
+  //////////////////////////////////////////////////////////////////////////////
+  for (auto [hist, region_station, ieta] : hist_vector) {
+    const int xbin = findResolutionBin(ieta, ieta_vec);
+    const int ybin = findResolutionBin(region_station, re_st_vec);
+
+    h_mean->SetBinContent(xbin, ybin, hist->GetMean());
+    h_stddev->SetBinContent(xbin, ybin, hist->GetStdDev());
+    h_skewness->SetBinContent(xbin, ybin, hist->GetSkewness());
+
+    h_mean->SetBinError(xbin, ybin, hist->GetMeanError());
+    h_skewness->SetBinError(xbin, ybin, hist->GetStdDevError());
+  }
+
+  for (auto&& each : {h_mean, h_stddev, h_skewness}) {
+    ibooker.book2D(each->GetName(), each);
+  }
+
 }
 
 void GEMEfficiencyHarvester::dqmEndJob(DQMStore::IBooker& ibooker, DQMStore::IGetter& igetter) {
   doEfficiency(ibooker, igetter);
-  doResolution(ibooker, igetter, "residual_phi");
+  doResolution(ibooker, igetter, "residual_rdphi");
 }

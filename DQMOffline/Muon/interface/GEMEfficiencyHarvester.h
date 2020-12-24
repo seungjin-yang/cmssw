@@ -20,13 +20,24 @@ private:
   TH2F* computeEfficiency(const TH2F*, const TH2F*, const char*, const char*);
 
   std::vector<std::string> splitString(std::string, const std::string);
-  std::tuple<std::string, int, bool, int> parseResidualName(std::string, const std::string);
+  std::tuple<std::string, int, int> parseResidualName(std::string, const std::string);
 
   void doEfficiency(DQMStore::IBooker&, DQMStore::IGetter&);
   void doResolution(DQMStore::IBooker&, DQMStore::IGetter&, const std::string);
 
+  template <typename T>
+  int findResolutionBin(const T&, const std::vector<T>&);
+
   std::string folder_;
   std::string log_category_;
 };
+
+
+template<typename T>
+int GEMEfficiencyHarvester::findResolutionBin(const T& elem, const std::vector<T>& vec) {
+  auto iter = std::find(vec.begin(), vec.end(), elem);
+  int bin = (iter != vec.end()) ? std::distance(vec.begin(), iter) + 1 : -1;
+  return bin;
+}
 
 #endif  // DQMOffline_Muon_GEMEfficiencyHarvester_h
