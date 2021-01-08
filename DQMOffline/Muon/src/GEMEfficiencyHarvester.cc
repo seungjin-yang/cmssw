@@ -12,24 +12,12 @@ GEMEfficiencyHarvester::GEMEfficiencyHarvester(const edm::ParameterSet& pset) {
 GEMEfficiencyHarvester::~GEMEfficiencyHarvester() {}
 
 
-/* TODO how about this style?
-GEMEfficiencyHarvester::fillDescriptions(edm::ConfigurationDescriptions& descriptions) {
-  {
-    // gemEfficiencyHarvesterSTA
-    edm::ParameterSetDescription desc;
-    desc.addUntracked<std::string>("folder", "GEM/GEMEfficiency/StandaloneMuon");
-    desc.addUntracked<std::string>("logCategory", "GEMEfficiencyHarvesterSTA");
-    descriptions.add("gemEfficiencyHarvesterSTA", desc);
-  }
-  {
-    // gemEfficiencyHarvesterTight
-    edm::ParameterSetDescription desc;
-    desc.addUntracked<std::string>("folder", "GEM/GEMEfficiency/TightGlobalMuon");
-    desc.addUntracked<std::string>("logCategory", "GEMEfficiencyHarvesterTight");
-    descriptions.add("gemEfficiencyHarvesterTight", desc);
-  }
+void GEMEfficiencyHarvester::fillDescriptions(edm::ConfigurationDescriptions& descriptions) {
+  edm::ParameterSetDescription desc;
+  desc.addUntracked<std::string>("folder", "GEM/GEMEfficiency/GEMEfficiencyAnalyzer");
+  desc.addUntracked<std::string>("logCategory", "GEMEfficiencyHarvester");
+  descriptions.add("gemEfficiencyHarvesterDefault", desc);
 }
-*/
 
 TProfile* GEMEfficiencyHarvester::computeEfficiency(
     const TH1F* passed, const TH1F* total, const char* name, const char* title, const double confidence_level) {
@@ -139,6 +127,7 @@ void GEMEfficiencyHarvester::doEfficiency(DQMStore::IBooker& ibooker, DQMStore::
     const auto& [me_passed, me_total] = value;
     if (me_passed == nullptr) {
       edm::LogError(log_category_) << "numerator is missing. " << key << std::endl;
+      continue;
     }
 
     if (me_total == nullptr) {
@@ -223,11 +212,13 @@ std::tuple<std::string, int, int> GEMEfficiencyHarvester::parseResidualName(cons
                                                                                   const std::string prefix) {
   std::string name = org_name;
 
-  // residual_x_ge-11_odd_ieta4 or residdual_x_ge+21_ieta3
-  // residual_x: prefix
+  // e.g. residual_rdphi_GE-11_R4 -> _GE-11_R4
   name.erase(name.find(prefix), prefix.length());
-  name.erase(name.find("_ge"), 3);
 
+  // _GE-11_R4 -> -11_R4
+  name.erase(name.find("_GE"), 3);
+
+  // -11_R4 -> (-11, R4)
   const std::vector<std::string>&& tokens = splitString(name, "_");
   const size_t num_tokens = tokens.size();
 
@@ -235,14 +226,16 @@ std::tuple<std::string, int, int> GEMEfficiencyHarvester::parseResidualName(cons
     return std::make_tuple("", -1, -1);
   }
 
-  // station != 1
+  // '-'11
   std::string region_sign = tokens.front().substr(0, 1);
-
+  // -'1'1
   TString station_str = tokens.front().substr(1, 1);
-  TString ieta_str = tokens.back().substr(4, 1);
 
-  int station = station_str.IsDigit() ? station_str.Atoi() : -1;
-  int ieta = ieta_str.IsDigit() ? ieta_str.Atoi() : -1;
+  // R'4' or R'16'
+  TString ieta_str = tokens.back().substr(1);
+
+  const int station = station_str.IsDigit() ? station_str.Atoi() : -1;
+  const int ieta = ieta_str.IsDigit() ? ieta_str.Atoi() : -1;
 
   return std::make_tuple(region_sign, station, ieta);
 }
@@ -293,10 +286,12 @@ void GEMEfficiencyHarvester::doResolution(DQMStore::IBooker& ibooker,
       ieta_vec.push_back(ieta);
   }  // MonitorElement
 
-  //////////////////////////////////////////////////////////////////////////////
-  // NOTE
-  //////////////////////////////////////////////////////////////////////////////
+  if (hist_vector.empty()) {
+    edm::LogError(log_category_) << "failed to find " << prefix << std::endl;
+    return;
+  }
 
+  // NOTE
   // GE-2/1, GE-1/1, GE-0/1, GE+0/1, GE+1/1, GE+2/1
   auto f_sort = [](const std::pair<std::string, int>& lhs, const std::pair<std::string, int>& rhs) -> bool {
     if (lhs.first == rhs.first) {
@@ -317,22 +312,23 @@ void GEMEfficiencyHarvester::doResolution(DQMStore::IBooker& ibooker,
   const int num_st = re_st_vec.size();
   const int num_ieta = ieta_vec.size();
 
-  //////////////////////////////////////////////////////////////////////////////
   // NOTE
-  //////////////////////////////////////////////////////////////////////////////
   TString tmp_title{std::get<0>(hist_vector.front())->GetTitle()};
+
   const TObjArray* tokens = tmp_title.Tokenize(":");
+  const TString title_prefix = dynamic_cast<TObjString*>(tokens->At(0))->GetString();
 
-  TString title = dynamic_cast<TObjString*>(tokens->At(0))->GetString();
+  const TString h_mean_name = prefix + "_mean";
+  const TString h_stddev_name = prefix + "_stddev";
+  const TString h_skewness_name = prefix + "_skewness";
 
-  const char* h_mean_name = Form("%s_mean", prefix.c_str());
-  const char* h_stddev_name = Form("%s_stddev", prefix.c_str());
-  const char* h_skewness_name = Form("%s_skewness", prefix.c_str());
+  const TString h_mean_title = title_prefix + " : Mean";
+  const TString h_stddev_title = title_prefix + " : Standard Deviation";
+  const TString h_skewness_title = title_prefix + " : Skewness";
 
-  TH2F* h_mean = new TH2F(h_mean_name, title,
-                          num_st, 0.5, num_st + 0.5,
-                          num_ieta, 0.5, num_ieta + 0.5);
-
+  TH2F* h_mean = new TH2F(h_mean_name, h_mean_title,
+                          num_ieta, 0.5, num_ieta + 0.5,
+                          num_st, 0.5, num_st + 0.5);
   // x-axis
   h_mean->GetXaxis()->SetTitle("i#eta");
   for (unsigned int idx = 0; idx < ieta_vec.size(); idx++) {
@@ -340,7 +336,6 @@ void GEMEfficiencyHarvester::doResolution(DQMStore::IBooker& ibooker,
     const char* label = Form("%d", ieta_vec[idx]);
     h_mean->GetXaxis()->SetBinLabel(xbin, label);
   }
-
   // y-axis
   for (unsigned int idx = 0; idx < re_st_vec.size(); idx++) {
     auto [region_sign, station] = re_st_vec[idx];
@@ -352,25 +347,35 @@ void GEMEfficiencyHarvester::doResolution(DQMStore::IBooker& ibooker,
   TH2F* h_stddev = dynamic_cast<TH2F*>(h_mean->Clone(h_stddev_name));
   TH2F* h_skewness = dynamic_cast<TH2F*>(h_mean->Clone(h_skewness_name));
 
-  //////////////////////////////////////////////////////////////////////////////
+  h_stddev->SetTitle(h_stddev_title);
+  h_skewness->SetTitle(h_skewness_title);
+
   // NOTE
-  //////////////////////////////////////////////////////////////////////////////
   for (auto [hist, region_station, ieta] : hist_vector) {
     const int xbin = findResolutionBin(ieta, ieta_vec);
+    if (xbin < 0) {
+      edm::LogError(log_category_) << "found a wrong x bin = " << xbin << std::endl;
+      continue;
+    }
+
     const int ybin = findResolutionBin(region_station, re_st_vec);
+    if (ybin < 0) {
+      edm::LogError(log_category_) << "found a wrong y bin = " << ybin << std::endl;
+      continue;
+    }
 
     h_mean->SetBinContent(xbin, ybin, hist->GetMean());
     h_stddev->SetBinContent(xbin, ybin, hist->GetStdDev());
     h_skewness->SetBinContent(xbin, ybin, hist->GetSkewness());
 
     h_mean->SetBinError(xbin, ybin, hist->GetMeanError());
-    h_skewness->SetBinError(xbin, ybin, hist->GetStdDevError());
+    h_stddev->SetBinError(xbin, ybin, hist->GetStdDevError());
+    h_skewness->SetBinError(xbin, ybin, hist->GetSkewness(11));
   }
 
   for (auto&& each : {h_mean, h_stddev, h_skewness}) {
     ibooker.book2D(each->GetName(), each);
   }
-
 }
 
 void GEMEfficiencyHarvester::dqmEndJob(DQMStore::IBooker& ibooker, DQMStore::IGetter& igetter) {

@@ -1,6 +1,7 @@
 import FWCore.ParameterSet.Config as cms
 from DQMServices.Core.DQMEDAnalyzer import DQMEDAnalyzer
 from RecoMuon.TrackingTools.MuonServiceProxy_cff import MuonServiceProxy
+from DQMOffline.Muon.gemEfficiencyAnalyzerDefault_cfi import *
 
 
 gemOfflineDQMTightGlbMuons = cms.EDFilter("MuonSelector",
@@ -26,26 +27,22 @@ gemOfflineDQMStaMuons = cms.EDFilter("MuonSelector",
 )
 
 
-gemEfficiencyAnalyzerTight = DQMEDAnalyzer('GEMEfficiencyAnalyzer',
-    MuonServiceProxy,
-    muonTag = cms.InputTag('gemOfflineDQMTightGlbMuons'),
-    useGlobalMuon = cms.untracked.bool(True),
-    folder = cms.untracked.string('GEM/GEMEfficiency/TightGlobalMuon'),
-    logCategory = cms.untracked.string('GEMEfficiencyAnalyzerTight'),
-)
+gemEfficiencyAnalyzerTight = gemEfficiencyAnalyzerDefault.clone()
+gemEfficiencyAnalyzerTight.ServiceParameters = MuonServiceProxy.ServiceParameters.clone()
+gemEfficiencyAnalyzerTight.muonTag = cms.InputTag('gemOfflineDQMTightGlbMuons')
+gemEfficiencyAnalyzerTight.folder = cms.untracked.string('GEM/GEMEfficiency/TightGlobalMuon')
+gemEfficiencyAnalyzerTight.logCategory = cms.untracked.string('GEMEfficiencyAnalyzerTight')
 
-
-gemEfficiencyAnalyzerSTA = gemEfficiencyAnalyzerTight.clone()
+gemEfficiencyAnalyzerSTA = gemEfficiencyAnalyzerDefault.clone()
+gemEfficiencyAnalyzerSTA.ServiceParameters = MuonServiceProxy.ServiceParameters.clone()
 gemEfficiencyAnalyzerSTA.muonTag = cms.InputTag("gemOfflineDQMStaMuons")
 gemEfficiencyAnalyzerSTA.useGlobalMuon = cms.untracked.bool(False)
 gemEfficiencyAnalyzerSTA.folder = cms.untracked.string('GEM/GEMEfficiency/StandaloneMuon')
 gemEfficiencyAnalyzerSTA.logCategory = cms.untracked.string('GEMEfficiencyAnalyzerSTA')
 
-
 from Configuration.Eras.Modifier_phase2_GEM_cff import phase2_GEM
 phase2_GEM.toModify(gemEfficiencyAnalyzerTight, etaNbins=cms.untracked.int32(15), etaHigh=cms.untracked.double(3.0))
 phase2_GEM.toModify(gemEfficiencyAnalyzerSTA, etaNbins=cms.untracked.int32(15), etaHigh=cms.untracked.double(3.0))
-
 
 gemEfficiencyAnalyzerTightSeq = cms.Sequence(
     cms.ignore(gemOfflineDQMTightGlbMuons) *

@@ -89,3 +89,24 @@ int GEMOfflineDQMBase::getNumEtaPartitions(const GEMStation* station) {
 
   return chambers.front()->nEtaPartitions();
 }
+
+void GEMOfflineDQMBase::fillME(MEMap& me_map, const GEMDetId& key, const float x) {
+  if (me_map.find(key) == me_map.end()) {
+    edm::LogError(log_category_) << "got invalid key: " << key << std::endl;
+
+  } else {
+    me_map[key]->Fill(x);
+  }
+}
+
+void GEMOfflineDQMBase::fillME(MEMap& me_map,
+                               const GEMDetId& key,
+                               const float x,
+                               const float y) {
+  if (me_map.find(key) == me_map.end()) {
+    edm::LogError(log_category_) << "got invalid key: " << key << std::endl;
+
+  } else {
+    me_map[key]->Fill(x, y);
+  }
+}

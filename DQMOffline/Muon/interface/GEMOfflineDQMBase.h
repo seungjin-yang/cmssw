@@ -8,19 +8,24 @@
 #include "DataFormats/MuonDetId/interface/GEMDetId.h"
 #include "Geometry/GEMGeometry/interface/GEMGeometry.h"
 
+
 class GEMOfflineDQMBase : public DQMEDAnalyzer {
 public:
+  using MEMap = std::map<GEMDetId, dqm::impl::MonitorElement*>;
+
   explicit GEMOfflineDQMBase(const edm::ParameterSet&);
-
-  typedef std::tuple<int, int> MEMapKey1;             // (region, station)
-  typedef std::tuple<int, int, int> MEMapKey2;  // (region, station, ieta)
-  typedef std::map<MEMapKey1, MonitorElement*> MEMap1;
-  typedef std::map<MEMapKey2, MonitorElement*> MEMap2;
-
+ 
   inline int getVFATNumber(const int, const int, const int);
   inline int getVFATNumberByStrip(const int, const int, const int);
   inline int getMaxVFAT(const int);
   inline int getDetOccXBin(const int, const int, const int);
+
+  // Re: region / St: station, La: layer, Ch: chamber parity, Et: eta partition
+  inline GEMDetId getReStKey(const int, const int);
+  inline GEMDetId getReStKey(const GEMDetId&);
+  inline GEMDetId getReStLaKey(const GEMDetId&);
+  inline GEMDetId getReStEtKey(const GEMDetId&);
+  inline GEMDetId getKey(const GEMDetId&); // == getReStLaChEtKey
 
   int getDetOccXBin(const GEMDetId&, const edm::ESHandle<GEMGeometry>&);
   void setDetLabelsVFAT(MonitorElement*, const GEMStation*);
@@ -28,19 +33,14 @@ public:
   // the number of eta partitions per GEMChamber
   int getNumEtaPartitions(const GEMStation*);
 
-  template <typename AnyKey>
-  TString convertKeyToStr(const AnyKey& key);
-
-  template <typename AnyKey>
-  void fillME(std::map<AnyKey, MonitorElement*>&, const AnyKey&, const float);
-
-  template <typename AnyKey>
-  void fillME(std::map<AnyKey, MonitorElement*>&, const AnyKey&, const float, const float y);
+  // FIXME template<typename T>
+  void fillME(MEMap& me_map, const GEMDetId& key, const float x);
+  void fillME(MEMap& me_map, const GEMDetId& key, const float x, const float y);
 
   template <typename T>
   inline bool checkRefs(const std::vector<T*>&);
 
-  inline float toDegree(float radian);
+  inline float toDegree(float);
 
   std::string log_category_;
 
@@ -137,47 +137,25 @@ inline bool GEMOfflineDQMBase::checkRefs(const std::vector<T*>& refs) {
   return true;
 }
 
-template <typename AnyKey>
-TString GEMOfflineDQMBase::convertKeyToStr(const AnyKey& key) {
-  if constexpr (std::is_same_v<AnyKey, MEMapKey1>) {
-    return TString::Format("Region %d, Station %d.", std::get<0>(key), std::get<1>(key));
-
-  } else if constexpr (std::is_same_v<AnyKey, MEMapKey2>) {
-    return TString::Format("Region %d, Station %d, Roll %d",
-                           std::get<0>(key),
-                           std::get<1>(key),
-                           std::get<2>(key));
-
-  } else {
-    return TString::Format("unknown key type: %s", typeid(key).name());
-  }
+inline GEMDetId GEMOfflineDQMBase::getReStKey(const int region, const int station) {
+  // region, ring, station, layer, chamber, roll
+  return GEMDetId{region, 1, station, 0, 0, 0};
 }
 
-template <typename AnyKey>
-void GEMOfflineDQMBase::fillME(std::map<AnyKey, MonitorElement*>& me_map, const AnyKey& key, const float x) {
-  if (me_map.find(key) == me_map.end()) {
-    const TString&& key_str = convertKeyToStr(key);
-    edm::LogError(log_category_) << "got invalid key: " << key_str << std::endl;
-
-  } else {
-    me_map[key]->Fill(x);
-  }
+inline GEMDetId GEMOfflineDQMBase::getReStKey(const GEMDetId& id) {
+  return getReStKey(id.region(), id.station());
 }
 
-template <typename AnyKey>
-void GEMOfflineDQMBase::fillME(std::map<AnyKey, MonitorElement*>& me_map,
-                               const AnyKey& key,
-                               const float x,
-                               const float y) {
-  if (me_map.find(key) == me_map.end()) {
-    const TString&& key_str = convertKeyToStr(key);
-    edm::LogError(log_category_) << "got invalid key: " << key_str << std::endl;
-
-  } else {
-    me_map[key]->Fill(x, y);
-  }
+inline GEMDetId GEMOfflineDQMBase::getReStLaKey(const GEMDetId& id) {
+  return GEMDetId{id.region(), 1, id.station(), id.layer(), 0, 0};
 }
 
+inline GEMDetId GEMOfflineDQMBase::getReStEtKey(const GEMDetId& id) {
+  return GEMDetId(id.region(), 1, id.station(), 0, 0, id.roll());
+}
 
+inline GEMDetId GEMOfflineDQMBase::getKey(const GEMDetId& id) {
+  return GEMDetId{id.region(), 1, id.station(), id.layer(), id.chamber() % 2, id.roll()};
+}
 
 #endif  // DQMOffline_Muon_GEMOfflineDQMBase_h

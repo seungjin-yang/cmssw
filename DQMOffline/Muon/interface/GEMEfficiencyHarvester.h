@@ -4,6 +4,7 @@
 #include "DQMServices/Core/interface/DQMEDHarvester.h"
 #include "DQMServices/Core/interface/DQMStore.h"
 #include "FWCore/ParameterSet/interface/ParameterSet.h"
+#include "FWCore/ParameterSet/interface/ConfigurationDescriptions.h"
 
 #include <vector>
 #include <string>
@@ -12,6 +13,7 @@ class GEMEfficiencyHarvester : public DQMEDHarvester {
 public:
   GEMEfficiencyHarvester(const edm::ParameterSet&);
   ~GEMEfficiencyHarvester() override;
+  static void fillDescriptions(edm::ConfigurationDescriptions &);
   void dqmEndJob(DQMStore::IBooker&, DQMStore::IGetter&) override;
 
 private:
