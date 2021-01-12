@@ -35,11 +35,12 @@ private:
     int region, station, layer;
   };
 
-  void bookDetectorOccupancy(
-      DQMStore::IBooker &, const GEMStation *, const GEMDetId&, const TString &, const TString &);
-  void bookOccupancy(DQMStore::IBooker &, const GEMDetId&, const TString &, const TString &);
-  void bookChamberOccupancy(DQMStore::IBooker &, const int, const GEMDetId&, const TString &, const TString &);
-  void bookResolution(DQMStore::IBooker &, const GEMDetId&, const TString &, const TString &);
+  void bookEfficiencyMomentum(DQMStore::IBooker &, const edm::ESHandle<GEMGeometry>&);
+  void bookEfficiencyChamber(DQMStore::IBooker &, const edm::ESHandle<GEMGeometry>&);
+  void bookEfficiencyEtaPartition(DQMStore::IBooker &, const edm::ESHandle<GEMGeometry>&);
+  void bookResolution(DQMStore::IBooker &, const edm::ESHandle<GEMGeometry>&);
+
+  void debugBookEfficiencyStrip(DQMStore::IBooker &, const edm::ESHandle<GEMGeometry>&);
 
   inline bool isInsideOut(const reco::Track&);
 
@@ -50,7 +51,8 @@ private:
   bool skipLayer(const reco::Track*, const GEMLayerData&);
   bool checkBounds(const GlobalPoint&, const Plane&);
   const GEMEtaPartition* findEtaPartition(const GlobalPoint&, const std::vector<const GEMChamber*>&);
-  const GEMRecHit *findMatchedHit(const GlobalPoint&, const GEMRecHitCollection::range &, const GEMEtaPartition*);
+  // const GEMRecHit *findMatchedHit(const GlobalPoint&, const GEMRecHitCollection::range &, const GEMEtaPartition*);
+  std::pair<const GEMRecHit *, float> findMatchedHit(const GlobalPoint&, const GEMRecHitCollection::range &, const GEMEtaPartition*);
 
   edm::EDGetTokenT<GEMRecHitCollection> rechit_token_;
   edm::EDGetTokenT<edm::View<reco::Muon> > muon_token_;
@@ -59,6 +61,7 @@ private:
 
   bool is_cosmics_;
   bool use_global_muon_;
+  bool use_fiducial_cut_;
   float rdphi_cut_;
   std::vector<double> pt_binning_;
   int eta_nbins_;
@@ -84,8 +87,14 @@ private:
 
   MEMap me_residual_rdphi_;    // global
   MEMap me_residual_y_;    // local
-  MEMap me_pull_rdphi_;
+  MEMap me_pull_phi_;
   MEMap me_pull_y_;
+
+  MonitorElement* debug_me_residual_rdphi_;
+
+  MEMap me_strip_; // region-station-ieta
+  MEMap me_strip_matched_; // region-station-ieta
+
 };
 
 inline bool GEMEfficiencyAnalyzer::isInsideOut(const reco::Track& track) {

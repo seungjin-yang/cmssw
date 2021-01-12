@@ -68,7 +68,6 @@ void GEMOfflineMonitor::bookDigiOccupancy(DQMStore::IBooker& ibooker,
     const auto&& name_suffix = TString::Format("_GE%+.2d", region_id * (station_id * 10 + 1));
     const auto&& title_suffix = TString::Format(" : GE%+.2d", region_id * (station_id * 10 + 1));
 
-    BookingHelper helper(ibooker, name_suffix, title_suffix);
     const auto&& superchambers = station->superChambers();
     if (not checkRefs(superchambers)) {
       edm::LogError(log_category_) << "failed to get a valid vector of GEMSuperChamber ptrs" << std::endl;
@@ -85,8 +84,9 @@ void GEMOfflineMonitor::bookDigiOccupancy(DQMStore::IBooker& ibooker,
     // the number of VFATs per GEMChamber
     const int num_vfat = num_etas * max_vfat;
 
-    me_digi_det_[key] =
-        helper.book2D("digi_det", "Digi Occupancy", num_chambers, 0.5, num_chambers + 0.5, num_vfat, 0.5, num_vfat + 0.5);
+    me_digi_det_[key] = 
+        ibooker.book2D("digi_det" + name_suffix, "Digi Occupancy" + title_suffix, 
+                       num_chambers, 0.5, num_chambers + 0.5, num_vfat, 0.5, num_vfat + 0.5);
     setDetLabelsVFAT(me_digi_det_[key], station);
   }  // station
 }
@@ -106,7 +106,6 @@ void GEMOfflineMonitor::bookHitOccupancy(DQMStore::IBooker& ibooker,
     const auto&& name_suffix = TString::Format("_GE%+.2d", region_id * (station_id * 10 + 1));
     const auto&& title_suffix = TString::Format(" : GE%+.2d", region_id * (station_id * 10 + 1));
 
-    BookingHelper helper(ibooker, name_suffix, title_suffix);
     const auto&& superchambers = station->superChambers();
     if (not checkRefs(superchambers)) {
       edm::LogError(log_category_) << "failed to get a valid vector of GEMSuperChamber ptrs" << std::endl;
@@ -116,15 +115,11 @@ void GEMOfflineMonitor::bookHitOccupancy(DQMStore::IBooker& ibooker,
     // per station
     const int num_superchambers = superchambers.size();
     const int num_chambers = num_superchambers * superchambers.front()->nChambers();
-    // the numer of VFATs per GEMEtaPartition
-    const int max_vfat = getMaxVFAT(station->station());
     // the number of eta partitions per GEMChamber
     const int num_etas = getNumEtaPartitions(station);
-    // the number of VFATs per GEMChamber
-    const int num_vfat = num_etas * max_vfat;
 
     me_hit_det_[key] =
-        helper.book2D("hit_det", "Hit Occupancy", num_chambers, 0.5, num_chambers + 0.5, num_etas, 0.5, num_etas + 0.5);
+        ibooker.book2D("hit_det" + name_suffix, "Hit Occupancy" + title_suffix, num_chambers, 0.5, num_chambers + 0.5, num_etas, 0.5, num_etas + 0.5);
     setDetLabelsEta(me_hit_det_[key], station);
   }  // station
 }
@@ -156,21 +151,23 @@ void GEMOfflineMonitor::bookHitRate(DQMStore::IBooker& ibooker,
           // FIXME waiting for yeckang:gemValidationTools PR
           // const auto&& name_suffix = GEMUtils::getSuffixName(region_id, station_id, layer_id, roll_id) + "_" + chamber_parity_name;
           // const auto&& title_suffix = GEMUtils::getSuffixTitle(region_id, station_id, layer_id, roll_id) + " " + chamber_parity_name;
-          const auto&& name_suffix = TString::Format(
+          const TString&& name_suffix = TString::Format(
               "_GE%+.2d_L%d_R%d_%s",
               key.region() * (key.station() * 10 + 1),
               key.layer(), key.roll(), chamber_parity.c_str());
-          const auto&& title_suffix = TString::Format(
+          const TString&& title_suffix = TString::Format(
               " : GE%+.2d Layer %d Roll %d %s",
               key.region() * (key.station() * 10 + 1),
               key.layer(), key.roll(), chamber_parity.c_str());
 
-          BookingHelper helper(ibooker, name_suffix, title_suffix);
+          const TString&& source_name = "source" + name_suffix;
+          const TString&& source_title = "Hit Multiplicity per Vertex Multiplicity for Background Hit Rate" + title_suffix;
 
-          me_hit_rate_source_[key] = helper.book1D("source", "Hit Multiplicity per Vertex Multiplicity for Background Hit Rate", 201, -0.5, 200.5);
+          me_hit_rate_source_[key] = ibooker.book1D(source_name, source_title, 201, -0.5, 200.5);
           me_hit_rate_source_[key]->setAxisTitle("Number of Vertices", 1);
           me_hit_rate_source_[key]->setAxisTitle("Number of Hits", 2);
 
+          const TString&& area_name = "area" + name_suffix;
           me_hit_rate_area_[key] = ibooker.bookFloat("area" + name_suffix);
         } // GEMEtaPartition (roll)
       } // GEMChamber (layer)

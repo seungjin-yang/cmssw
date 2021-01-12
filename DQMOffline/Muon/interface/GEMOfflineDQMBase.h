@@ -33,7 +33,7 @@ public:
   // the number of eta partitions per GEMChamber
   int getNumEtaPartitions(const GEMStation*);
 
-  // FIXME template<typename T>
+  // FIXME variadic?
   void fillME(MEMap& me_map, const GEMDetId& key, const float x);
   void fillME(MEMap& me_map, const GEMDetId& key, const float x, const float y);
 
@@ -44,56 +44,6 @@ public:
 
   std::string log_category_;
 
-  class BookingHelper {
-  public:
-    BookingHelper(DQMStore::IBooker& ibooker, const TString& name_suffix, const TString& title_suffix)
-        : ibooker_(&ibooker), name_suffix_(name_suffix), title_suffix_(title_suffix) {}
-
-    ~BookingHelper() {}
-
-    MonitorElement* book1D(TString name,
-                           TString title,
-                           int nbinsx,
-                           double xlow,
-                           double xup,
-                           TString x_title = "",
-                           TString y_title = "Entries") {
-      name += name_suffix_;
-      title += title_suffix_ + ";" + x_title + ";" + y_title;
-      return ibooker_->book1D(name, title, nbinsx, xlow, xup);
-    }
-
-    MonitorElement* book1D(TString name,
-                           TString title,
-                           std::vector<double>& x_binning,
-                           TString x_title = "",
-                           TString y_title = "Entries") {
-      name += name_suffix_;
-      title += title_suffix_ + ";" + x_title + ";" + y_title;
-      TH1F* h_obj = new TH1F(name, title, x_binning.size() - 1, &x_binning[0]);
-      return ibooker_->book1D(name, h_obj);
-    }
-
-    MonitorElement* book2D(TString name,
-                           TString title,
-                           int nbinsx,
-                           double xlow,
-                           double xup,
-                           int nbinsy,
-                           double ylow,
-                           double yup,
-                           TString x_title = "",
-                           TString y_title = "") {
-      name += name_suffix_;
-      title += title_suffix_ + ";" + x_title + ";" + y_title;
-      return ibooker_->book2D(name, title, nbinsx, xlow, xup, nbinsy, ylow, yup);
-    }
-
-  private:
-    DQMStore::IBooker* ibooker_;
-    const TString name_suffix_;
-    const TString title_suffix_;
-  };  // BookingHelper
 };
 
 inline int GEMOfflineDQMBase::getMaxVFAT(const int station) {
@@ -123,6 +73,7 @@ inline int GEMOfflineDQMBase::getDetOccXBin(const int chamber, const int layer, 
 
 inline float GEMOfflineDQMBase::toDegree(float radian) {
   float degree = radian / M_PI * 180.f;
+  // TODO
   if (degree < -5.f)
     degree += 360.f;
   return degree;
