@@ -76,6 +76,15 @@ void GEMEfficiencyAnalyzer::bookHistograms(DQMStore::IBooker& ibooker,
   ibooker.setCurrentFolder(folder_ + "/Debug");
   debug_me_residual_rdphi_ = ibooker.book1D("residual_rdphi", "", 100, 0.0f, 10.0f);
 
+  ibooker.setCurrentFolder(folder_ + "/Efficiency");
+  debug_me_is_outgoing_ = ibooker.book1D("is_outgoing", "", 2, -0.5, 1.5);
+  debug_me_is_outgoing_matched_ = ibooker.book1D("is_outgoing_matched", "", 2, -0.5, 1.5);
+
+  debug_me_is_outgoing_->setBinLabel(1, "Incoming");
+  debug_me_is_outgoing_->setBinLabel(2, "Outgoing");
+  debug_me_is_outgoing_matched_->setBinLabel(1, "Incoming");
+  debug_me_is_outgoing_matched_->setBinLabel(2, "Outgoing");
+
   bookEfficiencyMomentum(ibooker, gem);
   bookEfficiencyChamber(ibooker, gem);
   bookEfficiencyEtaPartition(ibooker, gem);
@@ -271,7 +280,6 @@ void GEMEfficiencyAnalyzer::debugBookEfficiencyStrip(
     const int region_id = station->region();
     const int station_id = station->station();
 
-    // FIXME
     const std::vector<const GEMSuperChamber*>&& superchambers = station->superChambers();
     if (not checkRefs(superchambers)) {
       edm::LogError(log_category_) << "failed to get a valid vector of GEMSuperChamber ptrs" << std::endl;
@@ -292,8 +300,8 @@ void GEMEfficiencyAnalyzer::debugBookEfficiencyStrip(
 
       const int nstrips = eta_partition->nstrips();
 
-      me_strip_[key] = ibooker.book1D("strip" + name_suffix, title_ + title_suffix, nstrips, 0, nstrips);
-      me_strip_matched_[key] = ibooker.book1D("strip_matched" + name_suffix, matched_title_ + title_suffix, nstrips, 0, nstrips);
+      me_strip_[key] = ibooker.book1D("strip" + name_suffix, title_ + title_suffix, nstrips / 4, 0, nstrips);
+      me_strip_matched_[key] = ibooker.book1D("strip_matched" + name_suffix, matched_title_ + title_suffix, nstrips / 4, 0, nstrips);
 
       me_strip_[key]->setAxisTitle("strip");
       me_strip_matched_[key]->setAxisTitle("strip");
@@ -437,6 +445,9 @@ void GEMEfficiencyAnalyzer::analyze(const edm::Event& event, const edm::EventSet
       }
 
       debug_me_residual_rdphi_->Fill(debug_rdphi);
+      if (debug_rdphi > rdphi_cut_) {
+        continue;
+      }
 
       fillME(me_detector_matched_, rs_key, chamber_bin, gem_id.roll());
       fillME(me_muon_pt_matched_, rs_key, muon.pt());
@@ -449,7 +460,7 @@ void GEMEfficiencyAnalyzer::analyze(const edm::Event& event, const edm::EventSet
       const LocalPoint&& hit_local_pos = matched_hit->localPosition();
       const GlobalPoint&& hit_global_pos = eta_partition->toGlobal(hit_local_pos);
 
-      const float dphi = TVector2::Phi_mpi_pi(dest_local_pos.barePhi() - hit_local_pos.barePhi());
+      const float dphi = TVector2::Phi_mpi_pi(dest_global_pos.barePhi() - hit_global_pos.barePhi());
       // const float dphi = dest_local_pos.phi() - hit_local_pos.phi();
       const float residual_rdphi = dest_global_pos.perp() * dphi;
       const float residual_y = dest_local_pos.y() - hit_local_pos.y();
@@ -575,7 +586,6 @@ GEMEfficiencyAnalyzer::getStartingState(
     const bool is_insideout = isInsideOut(track);
 
     const DetId inner_id{(is_insideout ? track.outerDetId() : track.innerDetId())};
-    // if ((inner_id.det() == DetId::Detector::Muon) and (inner_id.subdetId() == MuonSubdetId::GEM)) {
     if (MuonHitHelper::isGEM(inner_id.rawId())) {
       std::tie(starting_state, starting_id) = findStartingState(transient_track, layer, geometry);
 
@@ -603,12 +613,10 @@ GEMEfficiencyAnalyzer::findStartingState(
   float min_distance = 1e12;
   bool found = false;
     
+  // TODO optimize 
   for (auto rechit = transient_track.recHitsBegin(); rechit != transient_track.recHitsEnd(); rechit++) {
     const DetId&& det_id = (*rechit)->geographicalId();
-    // const int subdet_id = det_id.subdetId();
 
-    // FIXME temporary
-    // if ((det_id.det() == DetId::Detector::Muon) and (subdet_id == MuonSubdetId::GEM))
     if (MuonHitHelper::isGEM(det_id.rawId()))
       continue;
 
@@ -716,15 +724,14 @@ std::pair<const GEMRecHit*, float> GEMEfficiencyAnalyzer::findMatchedHit(
     const GEMEtaPartition* eta_partition) {
 
   const float dest_r = dest_global_pos.perp();
-
-  const LocalPoint&& dest_local_pos = eta_partition->toLocal(dest_global_pos);
-  const float dest_local_phi = dest_local_pos.barePhi();
+  const float dest_global_phi = dest_global_pos.barePhi();
 
   const GEMRecHit* closest_hit = nullptr;
   float min_rdphi = 1e6;
 
   for (auto hit = range.first; hit != range.second; ++hit) {
-    const float dphi = TVector2::Phi_mpi_pi(dest_local_phi - hit->localPosition().barePhi());
+    const GlobalPoint&& hit_global_pos = eta_partition->toGlobal(hit->localPosition());
+    const float dphi = TVector2::Phi_mpi_pi(dest_global_phi - hit_global_pos.barePhi());
     const float rdphi = std::fabs(dest_r * dphi);
     if (rdphi <= min_rdphi) {
       min_rdphi = rdphi;

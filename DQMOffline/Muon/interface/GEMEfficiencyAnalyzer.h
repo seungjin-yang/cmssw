@@ -95,6 +95,9 @@ private:
   MEMap me_strip_; // region-station-ieta
   MEMap me_strip_matched_; // region-station-ieta
 
+  // cosmics
+  MonitorElement* debug_me_is_outgoing_;
+  MonitorElement* debug_me_is_outgoing_matched_;
 };
 
 inline bool GEMEfficiencyAnalyzer::isInsideOut(const reco::Track& track) {
