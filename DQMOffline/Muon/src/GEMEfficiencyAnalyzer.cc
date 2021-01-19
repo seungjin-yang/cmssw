@@ -10,7 +10,7 @@
 #include "Geometry/Records/interface/GlobalTrackingGeometryRecord.h"
 #include "Validation/MuonGEMHits/interface/GEMValidationUtils.h"
 #include "Validation/MuonHits/interface/MuonHitHelper.h"
-
+#include "Geometry/CommonTopologies/interface/StripTopology.h"
 
 #include "TVector2.h"
 
@@ -24,10 +24,12 @@ GEMEfficiencyAnalyzer::GEMEfficiencyAnalyzer(const edm::ParameterSet& pset) : GE
 
   is_cosmics_ = pset.getUntrackedParameter<bool>("isCosmics");
   use_global_muon_ = pset.getUntrackedParameter<bool>("useGlobalMuon");
+  use_only_me11_ = pset.getUntrackedParameter<bool>("useOnlyME11");
   use_fiducial_cut_ = pset.getUntrackedParameter<bool>("useFiducialCut");
-  rdphi_cut_ = static_cast<float>(pset.getParameter<double>("RDeltaPhiCut"));
+  residual_rphi_cut_ = static_cast<float>(pset.getParameter<double>("ResidualRPhiCut"));
 
-  pt_binning_ = pset.getUntrackedParameter<std::vector<double> >("ptBinning");
+  pt_bins_ = pset.getUntrackedParameter<std::vector<double> >("ptBins");
+
   eta_nbins_ = pset.getUntrackedParameter<int>("etaNbins");
   eta_low_ = pset.getUntrackedParameter<double>("etaLow");
   eta_up_ = pset.getUntrackedParameter<double>("etaUp");
@@ -35,8 +37,12 @@ GEMEfficiencyAnalyzer::GEMEfficiencyAnalyzer(const edm::ParameterSet& pset) : GE
   folder_ = pset.getUntrackedParameter<std::string>("folder");
 
   // FIXME looks ugly
-  title_ = (use_global_muon_ ? "Global Muon" : "Standalone Muon");
-  matched_title_ = title_ + TString::Format(" (R_{Muon} #times |#phi_{Muon} - #phi_{Hit}| < %.1f cm)", rdphi_cut_);
+  title_ = use_global_muon_ ? "Global Muon" : "Standalone Muon";
+  // matched_title_ = title_ + TString::Format(" (R_{Muon} #times |#phi_{Muon} - #phi_{Hit}| < %.1f cm)", residual_rphi_cut_);
+
+  const double eps = std::numeric_limits<double>::epsilon();
+  pt_clamp_max_ = pt_bins_.back() - eps;
+  eta_clamp_max_ = eta_up_ - eps;
 }
 
 GEMEfficiencyAnalyzer::~GEMEfficiencyAnalyzer() {}
@@ -52,12 +58,13 @@ void GEMEfficiencyAnalyzer::fillDescriptions(edm::ConfigurationDescriptions& des
   }
   desc.addUntracked<bool>("isCosmics", false);
   desc.addUntracked<bool>("useGlobalMuon", true); // FIXME looks ugly..
+  desc.addUntracked<bool>("useOnlyME11", true);
   desc.addUntracked<bool>("useFiducialCut", false);
-  desc.add<double>("RDeltaPhiCut", 2.0); // TODO need to be tuned
-  desc.addUntracked<std::vector<double> >("ptBinning", {20. ,30., 40., 50., 60., 70., 80., 90., 100., 120., 140., 200.});
-  desc.addUntracked<int>("etaNbins", 7);
-  desc.addUntracked<double>("etaLow", 1.5);
-  desc.addUntracked<double>("etaUp", 2.2);
+  desc.add<double>("ResidualRPhiCut", 2.0); // TODO need to be tuned
+  desc.addUntracked<std::vector<double> >("ptBins", {20. ,30., 40., 50., 60., 70., 80., 90., 100., 120.});
+  desc.addUntracked<int>("etaNbins", 9);
+  desc.addUntracked<double>("etaLow", 1.4);
+  desc.addUntracked<double>("etaUp", 2.3);
   desc.addUntracked<std::string>("folder", "GEM/GEMEfficiency/GEMEfficiencyAnalyzer"); // FIXME
   desc.addUntracked<std::string>("logCategory", "GEMEfficiencyAnalyzer"); // FIXME
   descriptions.add("gemEfficiencyAnalyzerDefault", desc);
@@ -73,23 +80,51 @@ void GEMEfficiencyAnalyzer::bookHistograms(DQMStore::IBooker& ibooker,
     return;
   }
 
-  ibooker.setCurrentFolder(folder_ + "/Debug");
-  debug_me_residual_rdphi_ = ibooker.book1D("residual_rdphi", "", 100, 0.0f, 10.0f);
-
-  ibooker.setCurrentFolder(folder_ + "/Efficiency");
-  debug_me_is_outgoing_ = ibooker.book1D("is_outgoing", "", 2, -0.5, 1.5);
-  debug_me_is_outgoing_matched_ = ibooker.book1D("is_outgoing_matched", "", 2, -0.5, 1.5);
-
-  debug_me_is_outgoing_->setBinLabel(1, "Incoming");
-  debug_me_is_outgoing_->setBinLabel(2, "Outgoing");
-  debug_me_is_outgoing_matched_->setBinLabel(1, "Incoming");
-  debug_me_is_outgoing_matched_->setBinLabel(2, "Outgoing");
-
   bookEfficiencyMomentum(ibooker, gem);
   bookEfficiencyChamber(ibooker, gem);
   bookEfficiencyEtaPartition(ibooker, gem);
   bookResolution(ibooker, gem);
+
+  // NOTE
   debugBookEfficiencyStrip(ibooker, gem);
+
+  // NOTE
+  ibooker.setCurrentFolder(folder_ + "/Debug");
+  debug_me_residual_rphi_ = ibooker.book1D("residual_rphi", "", 100, 0.0f, 10.0f);
+
+  // NOTE
+  ibooker.setCurrentFolder(folder_ + "/Efficiency");
+
+  // NOTE
+  debug_me_is_outgoing_ = ibooker.book1D("is_outgoing", "", 2, -0.5, 1.5);
+  debug_me_is_outgoing_->setBinLabel(1, "Incoming");
+  debug_me_is_outgoing_->setBinLabel(2, "Outgoing");
+
+  debug_me_is_outgoing_matched_ = bookNumerator1D(ibooker, debug_me_is_outgoing_);
+
+  // 
+  debug_me_norm_chi2_ = ibooker.book1D("norm_chi2", "", 50, 0, 10);
+  debug_me_norm_chi2_matched_ = bookNumerator1D(ibooker, debug_me_norm_chi2_);
+
+  debug_me_d0_sig_ = ibooker.book1D("d0_sig", "", 50, 0, 10);
+  debug_me_d0_sig_matched_ = bookNumerator1D(ibooker, debug_me_d0_sig_);
+}
+
+
+dqm::impl::MonitorElement* GEMEfficiencyAnalyzer::bookNumerator1D(
+    DQMStore::IBooker& ibooker,
+    MonitorElement* me_denominator) {
+  const std::string name = me_denominator->getName() + "_matched";
+  TH1F* hist = dynamic_cast<TH1F*>(me_denominator->getTH1F()->Clone(name.c_str()));
+  return ibooker.book1D(name, hist);
+}
+
+dqm::impl::MonitorElement* GEMEfficiencyAnalyzer::bookNumerator2D(
+    DQMStore::IBooker& ibooker,
+    MonitorElement* me_denominator) {
+  const std::string name = me_denominator->getName() + "_matched";
+  TH2F* hist = dynamic_cast<TH2F*>(me_denominator->getTH2F()->Clone(name.c_str()));
+  return ibooker.book2D(name, hist);
 }
 
 
@@ -98,7 +133,10 @@ void GEMEfficiencyAnalyzer::bookEfficiencyMomentum(
     const edm::ESHandle<GEMGeometry>& gem) {
   ibooker.setCurrentFolder(folder_ + "/Efficiency");
 
-  const std::string pt_x_title = "Muon p_{T} [GeV]";
+  const TString pt_x_title = "Muon p_{T} [GeV]";
+  const int pt_nbinsx = pt_bins_.size() - 1;
+  const TString pt_last_bin_label = TString::Format("> %.0f", pt_bins_[pt_nbinsx - 1]);
+
   const std::string eta_x_title = "Muon |#eta|";
   const std::string phi_x_title = "Muon #phi [degree]";
 
@@ -114,29 +152,35 @@ void GEMEfficiencyAnalyzer::bookEfficiencyMomentum(
     const TString&& title_suffix = TString::Format(" : GE%+.2d", region_id * (station_id * 10 + 1));
 
     const TString&& title = title_ + title_suffix;
-    const TString&& matched_title = title_ + title_suffix;
 
-    TH1F* h_muon_pt = new TH1F("muon_pt" + name_suffix, title, pt_binning_.size() -1, &pt_binning_[0]);
+    // NOTE pt
+    TH1F* h_muon_pt = new TH1F("muon_pt" + name_suffix, title, pt_nbinsx, &pt_bins_[0]);
+    h_muon_pt->SetXTitle(pt_x_title);
+    h_muon_pt->GetXaxis()->SetBinLabel(pt_nbinsx, pt_last_bin_label);
     me_muon_pt_[key] = ibooker.book1D(h_muon_pt->GetName(), h_muon_pt);
 
-    TH1F* h_muon_pt_matched = new TH1F("muon_pt_matched" + name_suffix, matched_title, pt_binning_.size() -1, &pt_binning_[0]);
-    me_muon_pt_matched_[key] = ibooker.book1D(h_muon_pt_matched->GetName(), h_muon_pt_matched);
+    me_muon_pt_matched_[key] = bookNumerator1D(ibooker, me_muon_pt_[key]);
 
+    // NOTE eta
     me_muon_eta_[key] = ibooker.book1D("muon_eta" + name_suffix, title, eta_nbins_, eta_low_, eta_up_);
-    me_muon_eta_matched_[key] = ibooker.book1D("muon_eta_matched" + name_suffix, matched_title, eta_nbins_, eta_low_, eta_up_);
+    me_muon_eta_[key]->setXTitle(eta_x_title);
 
+    const double eta_first_bin_up_edge = me_muon_eta_[key]->getTH1F()->GetXaxis()->GetBinUpEdge(1);
+    const std::string eta_first_bin_label = Form("< %.1f", eta_first_bin_up_edge);
+    me_muon_eta_[key]->setBinLabel(1, eta_first_bin_label);
+
+    const double eta_last_bin_low_edge = me_muon_eta_[key]->getTH1F()->GetXaxis()->GetBinLowEdge(eta_nbins_);
+    const std::string eta_last_bin_label = Form("> %.1f", eta_last_bin_low_edge);
+    me_muon_eta_[key]->setBinLabel(eta_nbins_, eta_last_bin_label);
+
+    me_muon_eta_matched_[key] = bookNumerator1D(ibooker, me_muon_eta_[key]);
+
+    // NOTE phi
     me_muon_phi_[key] = ibooker.book1D("muon_phi" + name_suffix, title, 108, -5., 355.);
-    me_muon_phi_matched_[key] = ibooker.book1D("muon_phi_matched" + name_suffix, matched_title, 108, -5., 355.);
-
-    me_muon_pt_[key]->setAxisTitle(pt_x_title);
-    me_muon_pt_matched_[key]->setAxisTitle(pt_x_title);
-
-    me_muon_eta_[key]->setAxisTitle(eta_x_title);
-    me_muon_eta_matched_[key]->setAxisTitle(eta_x_title);
-
     me_muon_phi_[key]->setAxisTitle(phi_x_title);
-    me_muon_phi_matched_[key]->setAxisTitle(phi_x_title);
 
+    me_muon_phi_matched_[key] = bookNumerator1D(ibooker, me_muon_phi_[key]);
+    
   }  // station
 }
 
@@ -170,10 +214,13 @@ void GEMEfficiencyAnalyzer::bookEfficiencyChamber(
       const GEMDetId&& key = getReStLaKey(chamber->id());
 
       me_chamber_[key] = ibooker.book1D("muon_chamber" + name_suffix, title_ + title_suffix, num_chambers, 0.5, num_chambers + 0.5);
-      me_chamber_matched_[key] = ibooker.book1D("muon_chamber_matched" + name_suffix, matched_title_ + title_suffix, num_chambers, 0.5, num_chambers + 0.5);
-
       me_chamber_[key]->setAxisTitle("Chamber");
-      me_chamber_matched_[key]->setAxisTitle("Chamber");
+      me_chamber_[key]->getTH1F()->SetNdivisions(-num_chambers, "Y");
+      for (int binx = 1; binx <= num_chambers; binx++) {
+        me_chamber_[key]->setBinLabel(binx, std::to_string(binx));
+      }
+
+      me_chamber_matched_[key] = bookNumerator1D(ibooker, me_chamber_[key]);
     } // layer
   } // station
 }
@@ -207,12 +254,9 @@ void GEMEfficiencyAnalyzer::bookEfficiencyEtaPartition(
     const int num_etas = getNumEtaPartitions(station);
 
     me_detector_[key] = ibooker.book2D("detector" + name_suffix, title_ + title_suffix, num_ch, 0.5, num_ch + 0.5, num_etas, 0.5, num_etas + 0.5);
-    me_detector_matched_[key] =
-        ibooker.book2D("detector_matched" + name_suffix, matched_title_ + title_suffix, num_ch, 0.5, num_ch + 0.5, num_etas, 0.5, num_etas + 0.5);
-
     setDetLabelsEta(me_detector_[key], station);
-    setDetLabelsEta(me_detector_matched_[key], station);
 
+    me_detector_matched_[key] = bookNumerator2D(ibooker, me_detector_[key]);
   }  // station
 }
 
@@ -221,11 +265,6 @@ void GEMEfficiencyAnalyzer::bookEfficiencyEtaPartition(
 void GEMEfficiencyAnalyzer::bookResolution(
     DQMStore::IBooker & ibooker,
     const edm::ESHandle<GEMGeometry>& gem) {
-
-  // const std::string rdphi_x_title = "R_{muon}#times(#phi_{muon}-#phi_{hit}) [cm #times rad.]";
-  // const std::string residual_y_x_title = "Residual in Local Y [cm]";
-  // const std::string pull_phi_x_title = "Pull in Global #phi";
-  // const std::string pull_y_x_title = "Pull in Local Y";
 
   ibooker.setCurrentFolder(folder_ + "/Resolution");
   for (const GEMStation* station : gem->stations()) {
@@ -252,10 +291,11 @@ void GEMEfficiencyAnalyzer::bookResolution(
       // const TString&& name_suffix = GEMUtils::getSuffixName(region_id, station_id) + TString::Format("_R%d", roll_id);
       // const TString&& title_suffix = GEMUtils::getSuffixTitle(region_id, station_id) + TString::Format(" Roll %d", roll_id);
       const TString&& name_suffix = TString::Format("_GE%+.2d_R%d", region_id * (station_id * 10 + 1), roll_id);
-      const TString&& title = matched_title_ + TString::Format(" : GE%+.2d Roll %d", region_id * (station_id * 10 + 1), roll_id);
+      const TString&& title = title_ + TString::Format(" : GE%+.2d Roll %d", region_id * (station_id * 10 + 1), roll_id);
 
-      me_residual_rdphi_[key] = ibooker.book1D("residual_rdphi" + name_suffix, title, 50, -rdphi_cut_, rdphi_cut_);
-      me_residual_rdphi_[key]->setAxisTitle("R_{muon}#times(#phi_{muon}-#phi_{hit}) [cm]");
+      me_residual_rphi_[key] = ibooker.book1D("residual_rphi" + name_suffix, title, 50, -residual_rphi_cut_, residual_rphi_cut_);
+      // me_residual_rphi_[key]->setAxisTitle("R_{muon}#times(#phi_{muon}-#phi_{hit}) [cm]");
+      me_residual_rphi_[key]->setAxisTitle("Residual in R#phi [cm]");
 
       me_residual_y_[key] = ibooker.book1D("residual_y" + name_suffix, title, 60, -12.0, 12.0);
       me_residual_y_[key]->setAxisTitle("Residual in Local Y [cm]");
@@ -301,11 +341,9 @@ void GEMEfficiencyAnalyzer::debugBookEfficiencyStrip(
       const int nstrips = eta_partition->nstrips();
 
       me_strip_[key] = ibooker.book1D("strip" + name_suffix, title_ + title_suffix, nstrips / 4, 0, nstrips);
-      me_strip_matched_[key] = ibooker.book1D("strip_matched" + name_suffix, matched_title_ + title_suffix, nstrips / 4, 0, nstrips);
-
       me_strip_[key]->setAxisTitle("strip");
-      me_strip_matched_[key]->setAxisTitle("strip");
 
+      me_strip_matched_[key] = bookNumerator1D(ibooker, me_strip_[key]);
     }  // ieta
   }  // station
 }
@@ -362,23 +400,47 @@ void GEMEfficiencyAnalyzer::analyze(const edm::Event& event, const edm::EventSet
       continue;
     }
 
+    // FIXME
+    float p2_in = track->innerMomentum().mag2();
+    float p2_out = track->outerMomentum().mag2();
+    if (isInsideOut(*track))
+      std::swap(p2_in, p2_out);
+    const bool is_outgoing = p2_in > p2_out;
+
     const reco::TransientTrack&& transient_track = transient_track_builder->build(track);
     if (not transient_track.isValid()) {
       edm::LogError(log_category_) << "failed to build TransientTrack" << std::endl;
       continue;
     }
 
+
+    const double norm_chi2 = std::min(track->normalizedChi2(), 9.999);
+    const double d0_sig = std::min(transient_track.stateAtBeamLine().transverseImpactParameter().significance(), 9.999);
+    
     for (const GEMLayerData& layer : layer_vector) {
       if (skipLayer(track, layer)) {
-        // TODO LogInfo
+        edm::LogInfo(log_category_) << "skip GEM Layer" << std::endl; 
         continue;
       }
 
       const auto&& [start_state, start_id] = getStartingState(transient_track, layer, global_tracking_geometry);
       if (not start_state.isValid()) {
-        // TODO detail msg
         edm::LogInfo(log_category_) << "failed to get a starting state" << std::endl;
         continue;
+      }
+
+      // TODO isME11
+      if (use_only_me11_) {
+          // TODO LogInfo
+        if (not MuonHitHelper::isCSC(start_id)) {
+          continue;
+        }
+
+        const CSCDetId csc_id{start_id};
+        if ((csc_id.station() != 1) or (csc_id.ring() != 1)) {
+          // TODO LogInfo
+          continue;
+        }
       }
 
       // trajectory state on the destination surface
@@ -408,13 +470,11 @@ void GEMEfficiencyAnalyzer::analyze(const edm::Event& event, const edm::EventSet
       const LocalPoint&& dest_local_pos = eta_partition->toLocal(dest_global_pos);
       const float strip = eta_partition->strip(eta_partition->toLocal(dest_global_pos));
 
-      // make it tunable
+      // TODO make it tunable based on eta-partition..?
       if (use_fiducial_cut_ and ((strip < 20) or (strip > 364))) {
-
         edm::LogInfo(log_category_) << "fiducial" << std::endl;
         continue;
       }
-
 
       const GEMDetId&& gem_id = eta_partition->id();
 
@@ -423,54 +483,65 @@ void GEMEfficiencyAnalyzer::analyze(const edm::Event& event, const edm::EventSet
       const GEMDetId&& rse_key = getReStEtKey(gem_id);
 
       const int chamber_bin = getDetOccXBin(gem_id, gem);
+      const double clamped_muon_pt = std::min(muon.pt(), pt_clamp_max_);
+      const double clamped_muon_eta = std::clamp(std::fabs(muon.eta()), eta_low_, eta_clamp_max_);
+      const double muon_phi_degree = toDegree(muon.phi());
 
-      const float muon_abs_eta = std::fabs(muon.eta());
-      const float muon_phi_degree = toDegree(muon.phi());
 
       fillME(me_detector_, rs_key, chamber_bin, gem_id.roll());
-      fillME(me_muon_pt_, rs_key, muon.pt());
-      fillME(me_muon_eta_, rs_key, muon_abs_eta);
+      fillME(me_muon_pt_, rs_key, clamped_muon_pt);
+      fillME(me_muon_eta_, rs_key, clamped_muon_eta);
       fillME(me_muon_phi_, rs_key, muon_phi_degree);
       fillME(me_chamber_, rsl_key, gem_id.chamber());
 
       fillME(me_strip_, rse_key, strip);
+      debug_me_is_outgoing_->Fill(is_outgoing ? 1 : 0);
+      debug_me_norm_chi2_->Fill(norm_chi2);
+      debug_me_d0_sig_->Fill(d0_sig);
+      
 
       // const GEMRecHit* matched_hit = findMatchedHit(
       //     dest_global_pos, rechit_collection->get(gem_id), eta_partition);
-      const auto&& [matched_hit, debug_rdphi] = findMatchedHit(
+      const auto&& [matched_hit, debug_residual_rphi] = findMatchedHit(
           dest_global_pos, rechit_collection->get(gem_id), eta_partition);
 
       if (matched_hit == nullptr) {
         continue;
       }
 
-      debug_me_residual_rdphi_->Fill(debug_rdphi);
-      if (debug_rdphi > rdphi_cut_) {
+      debug_me_residual_rphi_->Fill(debug_residual_rphi);
+      if (debug_residual_rphi > residual_rphi_cut_) {
         continue;
       }
 
       fillME(me_detector_matched_, rs_key, chamber_bin, gem_id.roll());
-      fillME(me_muon_pt_matched_, rs_key, muon.pt());
-      fillME(me_muon_eta_matched_, rs_key, muon_abs_eta);
+      fillME(me_muon_pt_matched_, rs_key, clamped_muon_pt);
+      fillME(me_muon_eta_matched_, rs_key, clamped_muon_eta);
       fillME(me_muon_phi_matched_, rs_key, muon_phi_degree);
       fillME(me_chamber_matched_, rsl_key, gem_id.chamber());
 
       fillME(me_strip_matched_, rse_key, strip);
+      debug_me_is_outgoing_matched_->Fill(is_outgoing ? 1 : 0);
+
+      debug_me_norm_chi2_matched_->Fill(norm_chi2);
+      debug_me_d0_sig_matched_->Fill(d0_sig);
 
       const LocalPoint&& hit_local_pos = matched_hit->localPosition();
       const GlobalPoint&& hit_global_pos = eta_partition->toGlobal(hit_local_pos);
 
+      const float hit_local_phi = eta_partition->specificTopology().stripAngle(eta_partition->strip(hit_local_pos));
+
       const float dphi = TVector2::Phi_mpi_pi(dest_global_pos.barePhi() - hit_global_pos.barePhi());
-      // const float dphi = dest_local_pos.phi() - hit_local_pos.phi();
-      const float residual_rdphi = dest_global_pos.perp() * dphi;
+      const float residual_x = dest_local_pos.x() - hit_local_pos.x();
       const float residual_y = dest_local_pos.y() - hit_local_pos.y();
+      const float residual_rphi = std::cos(hit_local_phi) * residual_x + std::sin(hit_local_phi) * residual_y;
 
       const LocalError&& dest_local_err = dest_state.localError().positionError();
       const LocalError&& hit_local_err = matched_hit->localPositionError();
 
-      const BoundPlane& bound_plane = eta_partition->surface();
-      const GlobalError& dest_global_err = ErrorFrameTransformer().transform(dest_local_err, bound_plane);
-      const GlobalError& hit_global_err = ErrorFrameTransformer().transform(hit_local_err, bound_plane);
+      const BoundPlane& surface = eta_partition->surface();
+      const GlobalError& dest_global_err = ErrorFrameTransformer().transform(dest_local_err, surface);
+      const GlobalError& hit_global_err = ErrorFrameTransformer().transform(hit_local_err, surface);
 
       const float global_phi_err = std::sqrt(dest_global_err.phierr(dest_global_pos) + hit_global_err.phierr(hit_global_pos));
 
@@ -478,7 +549,8 @@ void GEMEfficiencyAnalyzer::analyze(const edm::Event& event, const edm::EventSet
       const float pull_phi = dphi / global_phi_err;
       const float pull_y = residual_y / std::sqrt(dest_local_err.yy() + hit_local_err.yy());
 
-      fillME(me_residual_rdphi_, rse_key, residual_rdphi);
+      // fillME(me_residual_rphi_, rse_key, residual_rphi);
+      fillME(me_residual_rphi_, rse_key, residual_rphi);
       fillME(me_residual_y_, rse_key, residual_y);
 
       fillME(me_pull_phi_, rse_key, pull_phi);
@@ -512,6 +584,7 @@ GEMEfficiencyAnalyzer::buildGEMLayers(const edm::ESHandle<GEMGeometry>& gem) {
     for (auto [layer_id, chamber_vector] : tmp_data) {
       // TODO checkRefs
 
+      // FIXME ignore z bounds
       auto [rmin, rmax] = chamber_vector[0]->surface().rSpan();
       auto [zmin, zmax] = chamber_vector[0]->surface().zSpan();
       for (const GEMChamber* chamber : chamber_vector) {
@@ -531,12 +604,11 @@ GEMEfficiencyAnalyzer::buildGEMLayers(const edm::ESHandle<GEMGeometry>& gem) {
       Surface::PositionType position(0.f, 0.f, layer_z);
       Surface::RotationType rotation;
 
-      // zmin -= layer_z;
-      // zmax -= layer_z;
+      zmin -= layer_z;
+      zmax -= layer_z;
 
       // the bounds from min and max R and Z in the local coordinates.
-      // but disk seems to ignore z
-      SimpleDiskBounds* bounds = new SimpleDiskBounds(rmin, rmax, zmin - layer_z, zmax - layer_z);
+      SimpleDiskBounds* bounds = new SimpleDiskBounds(rmin, rmax, zmin, zmax);
       const Disk::DiskPointer&& layer = Disk::build(position, rotation, bounds);
 
       layer_vector.emplace_back(layer, chamber_vector, region_id, station_id, layer_id);
@@ -701,14 +773,14 @@ const GEMRecHit* GEMEfficiencyAnalyzer::findMatchedHit(
   const float dest_phi = dest_global_pos.barePhi();
 
   const GEMRecHit* closest_hit = nullptr;
-  float min_rdphi{rdphi_cut_};
+  float min_residual_rphi{residual_rphi_cut_};
 
   for (auto hit = range.first; hit != range.second; ++hit) {
     const GlobalPoint&& hit_global_pos = eta_partition->toGlobal(hit->localPosition());
     const float dphi = TVector2::Phi_mpi_pi(dest_phi - hit_global_pos.barePhi());
-    const float rdphi = std::fabs(dest_r * dphi);
-    if (rdphi <= min_rdphi) {
-      min_rdphi = rdphi;
+    const float residual_rphi = std::fabs(dest_r * dphi);
+    if (residual_rphi <= min_residual_rphi) {
+      min_residual_rphi = residual_rphi;
       closest_hit = &(*hit);
     }
   }
@@ -723,21 +795,26 @@ std::pair<const GEMRecHit*, float> GEMEfficiencyAnalyzer::findMatchedHit(
     const GEMRecHitCollection::range& range,
     const GEMEtaPartition* eta_partition) {
 
-  const float dest_r = dest_global_pos.perp();
-  const float dest_global_phi = dest_global_pos.barePhi();
-
+  const LocalPoint&& dest_local_pos = eta_partition->toLocal(dest_global_pos);
+  const float dest_local_x = dest_local_pos.x();
+  const float dest_local_y = dest_local_pos.y();
+  
   const GEMRecHit* closest_hit = nullptr;
-  float min_rdphi = 1e6;
+  float min_residual_rphi = 1e6;
 
   for (auto hit = range.first; hit != range.second; ++hit) {
-    const GlobalPoint&& hit_global_pos = eta_partition->toGlobal(hit->localPosition());
-    const float dphi = TVector2::Phi_mpi_pi(dest_global_phi - hit_global_pos.barePhi());
-    const float rdphi = std::fabs(dest_r * dphi);
-    if (rdphi <= min_rdphi) {
-      min_rdphi = rdphi;
+    const LocalPoint&& hit_local_pos = hit->localPosition();
+    const float hit_local_phi = eta_partition->specificTopology().stripAngle(eta_partition->strip(hit_local_pos));
+ 
+    const float residual_x = dest_local_x - hit_local_pos.x();
+    const float residual_y = dest_local_y - hit_local_pos.y();
+    const float residual_rphi = std::abs(std::cos(hit_local_phi) * residual_x + std::sin(hit_local_phi) * residual_y);
+
+    if (min_residual_rphi <= residual_rphi) {
+      min_residual_rphi = residual_rphi;
       closest_hit = &(*hit);
     }
   }
 
-  return std::make_pair(closest_hit, min_rdphi);
+  return std::make_pair(closest_hit, min_residual_rphi);
 }

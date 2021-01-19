@@ -129,7 +129,9 @@ void GEMOfflineMonitor::bookHitRate(DQMStore::IBooker& ibooker,
                                     const edm::ESHandle<GEMGeometry>& gem) {
   ibooker.setCurrentFolder("GEM/GEMOfflineMonitor/HitRate/Source");
 
-  me_hit_rate_num_events_ = ibooker.bookInt("num_events");
+  me_hit_rate_num_events_ = ibooker.book1D("num_events", "", 201, -0.5, 200.5);
+  me_hit_rate_num_events_->setAxisTitle("Vertex Multiplicity", 1);
+  me_hit_rate_num_events_->setAxisTitle("Number of Events", 2);
 
   for (const GEMStation* station : gem->stations()) {
     // TODO if GE11
@@ -155,19 +157,16 @@ void GEMOfflineMonitor::bookHitRate(DQMStore::IBooker& ibooker,
               "_GE%+.2d_L%d_R%d_%s",
               key.region() * (key.station() * 10 + 1),
               key.layer(), key.roll(), chamber_parity.c_str());
+
           const TString&& title_suffix = TString::Format(
               " : GE%+.2d Layer %d Roll %d %s",
               key.region() * (key.station() * 10 + 1),
               key.layer(), key.roll(), chamber_parity.c_str());
 
-          const TString&& source_name = "source" + name_suffix;
-          const TString&& source_title = "Hit Multiplicity per Vertex Multiplicity for Background Hit Rate" + title_suffix;
+          me_hit_rate_num_hits_[key] = ibooker.book1D("num_hits" + name_suffix, "", 201, -0.5, 200.5);
+          me_hit_rate_num_hits_[key]->setAxisTitle("Vertex Multiplicity", 1);
+          me_hit_rate_num_hits_[key]->setAxisTitle("Number of Hits", 2);
 
-          me_hit_rate_source_[key] = ibooker.book1D(source_name, source_title, 201, -0.5, 200.5);
-          me_hit_rate_source_[key]->setAxisTitle("Number of Vertices", 1);
-          me_hit_rate_source_[key]->setAxisTitle("Number of Hits", 2);
-
-          const TString&& area_name = "area" + name_suffix;
           me_hit_rate_area_[key] = ibooker.bookFloat("area" + name_suffix);
         } // GEMEtaPartition (roll)
       } // GEMChamber (layer)
@@ -270,13 +269,14 @@ void GEMOfflineMonitor::doHitRate(
     num_vtx++;
   }
 
+  me_hit_rate_num_events_->Fill(num_vtx);
   for (auto hit = rechit_collection->begin(); hit != rechit_collection->end(); hit++) {
     const GEMDetId&& key = getKey(hit->gemId());
-    fillME(me_hit_rate_source_, key, num_vtx);
+    fillME(me_hit_rate_num_hits_, key, num_vtx);
   }
 
   // TODO initialization...?
-  me_hit_rate_num_events_->Fill(me_hit_rate_num_events_->getIntValue() + 1);
+  me_hit_rate_num_events_->Fill(num_vtx);
 
   if (uninitialized_area_) {
     uninitialized_area_ = false;

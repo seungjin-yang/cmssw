@@ -23,19 +23,19 @@ void GEMOfflineHarvester::doHitRate(DQMStore::IBooker& ibooker, DQMStore::IGette
   const std::string source_folder = hit_rate_folder + "/Source/";
   igetter.setCurrentFolder(source_folder);
 
-  const std::string source_prefix = "source_";
-  const std::string area_prefix = "area_";
   const std::string num_events_name = "num_events";
+  const std::string num_hits_prefix = "num_hits_";
+  const std::string area_prefix = "area_";
 
   MonitorElement* me_num_events = igetter.get(source_folder + num_events_name);
   if (me_num_events == nullptr) {
     edm::LogError(log_category_) << "failed to get " << source_folder + num_events_name << std::endl;
     return;
   }
-  const int64_t num_events = me_num_events->getIntValue();
-  const double data_taking_time = num_events * timing_window_;
+  const TH1F* h_num_events = me_num_events->getTH1F();
+  // const double data_taking_time = num_events * timing_window_;
 
-  // map<key, pair<source, area> >
+  // map<key, pair<num_hits, area> >
   std::map<std::string, std::pair<const MonitorElement*, const MonitorElement*> > me_pairs;
   for (const std::string& name : igetter.getMEs()) {
     if (name == num_events_name) continue;
@@ -47,12 +47,12 @@ void GEMOfflineHarvester::doHitRate(DQMStore::IBooker& ibooker, DQMStore::IGette
       continue;
     }
 
-    const bool is_source = name.find(source_prefix) != std::string::npos;
+    const bool is_num_hits = name.find(num_hits_prefix) != std::string::npos;
     const bool is_area = name.find(area_prefix) != std::string::npos;
 
     std::string key = name;
-    if (is_source)
-      key.erase(key.find(source_prefix), source_prefix.length());
+    if (is_num_hits)
+      key.erase(key.find(num_hits_prefix), num_hits_prefix.length());
     else if (is_area)
       key.erase(key.find(area_prefix), area_prefix.length());
     else {
@@ -64,7 +64,7 @@ void GEMOfflineHarvester::doHitRate(DQMStore::IBooker& ibooker, DQMStore::IGette
       me_pairs[key] = {nullptr, nullptr};
     }
 
-    if (is_source)
+    if (is_num_hits)
       me_pairs[key].first = me;
     if (is_area)
       me_pairs[key].second = me;
@@ -72,9 +72,9 @@ void GEMOfflineHarvester::doHitRate(DQMStore::IBooker& ibooker, DQMStore::IGette
 
   ibooker.setCurrentFolder(hit_rate_folder);
   for (auto&& [key, value] : me_pairs) {
-    const auto& [me_source, me_area] = value;
-    if (me_source == nullptr) {
-      edm::LogError(log_category_) << "source is missing" << std::endl;
+    const auto& [me_num_hits, me_area] = value;
+    if (me_num_hits == nullptr) {
+      edm::LogError(log_category_) << "num_hits is missing" << std::endl;
       continue;
     }
 
@@ -83,8 +83,8 @@ void GEMOfflineHarvester::doHitRate(DQMStore::IBooker& ibooker, DQMStore::IGette
       continue;
     }
 
-    TH1F* h_source = me_source->getTH1F();
-    if (h_source == nullptr) {
+    TH1F* h_num_hits = me_num_hits->getTH1F();
+    if (h_num_hits == nullptr) {
       edm::LogError(log_category_) << "failed to get TH1F from " << key << std::endl;
       continue;
     }
@@ -102,12 +102,18 @@ void GEMOfflineHarvester::doHitRate(DQMStore::IBooker& ibooker, DQMStore::IGette
     // TODO
     const std::string title = "Hit Rate";
 
-    TH1F* h_hit_rate = dynamic_cast<TH1F*>(h_source->Clone(name.c_str()));
+    TH1F* h_hit_rate = dynamic_cast<TH1F*>(h_num_hits->Clone(name.c_str()));
     h_hit_rate->SetTitle(title.c_str());
     h_hit_rate->GetYaxis()->SetTitle("Hit Rate [Hz/cm^{2}]");
 
+    // The function return kFALSE if the divide operation failed
+    if (not h_hit_rate->Divide(h_num_events)) {
+      edm::LogError(log_category_) << "failed to divide" << std::endl;
+      continue;
+    }
+
     // TODO check scale
-    const double scale = 1.0f / (data_taking_time * area);
+    const double scale = 1.0 / (timing_window_ * area);
     h_hit_rate->Scale(scale);
 
     ibooker.book1D(name, h_hit_rate);

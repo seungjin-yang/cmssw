@@ -51,9 +51,9 @@ private:
   MEMap me_digi_det_; // TH2F, region-station
   MEMap me_hit_det_; // TH2F, region-station
 
-  MEMap me_hit_rate_source_; // TH1F, (region, station, chamber parity, ieta)
+  MonitorElement* me_hit_rate_num_events_;
+  MEMap me_hit_rate_num_hits_; // TH1F, (region, station, chamber parity, ieta)
   MEMap me_hit_rate_area_;
-  MonitorElement* me_hit_rate_num_events_; // Int
 };
 
 #endif  // DQMOffline_Muon_GEMOfflineMonitor_h

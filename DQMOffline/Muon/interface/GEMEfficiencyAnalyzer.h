@@ -35,6 +35,9 @@ private:
     int region, station, layer;
   };
 
+  MonitorElement* bookNumerator1D(DQMStore::IBooker&, MonitorElement*);
+  MonitorElement* bookNumerator2D(DQMStore::IBooker&, MonitorElement*);
+
   void bookEfficiencyMomentum(DQMStore::IBooker &, const edm::ESHandle<GEMGeometry>&);
   void bookEfficiencyChamber(DQMStore::IBooker &, const edm::ESHandle<GEMGeometry>&);
   void bookEfficiencyEtaPartition(DQMStore::IBooker &, const edm::ESHandle<GEMGeometry>&);
@@ -61,17 +64,20 @@ private:
 
   bool is_cosmics_;
   bool use_global_muon_;
+  bool use_only_me11_;
   bool use_fiducial_cut_;
-  float rdphi_cut_;
-  std::vector<double> pt_binning_;
+  float residual_rphi_cut_;
+  std::vector<double> pt_bins_;
   int eta_nbins_;
   double eta_low_;
   double eta_up_;
-
   std::string folder_;
 
   TString title_;
-  TString matched_title_;
+  // TString matched_title_;
+
+  double pt_clamp_max_;
+  double eta_clamp_max_;
 
   MEMap me_detector_;
   MEMap me_detector_matched_;
@@ -85,12 +91,12 @@ private:
   MEMap me_muon_phi_matched_;
   MEMap me_chamber_matched_;
 
-  MEMap me_residual_rdphi_;    // global
+  MEMap me_residual_rphi_;    // global
   MEMap me_residual_y_;    // local
   MEMap me_pull_phi_;
   MEMap me_pull_y_;
 
-  MonitorElement* debug_me_residual_rdphi_;
+  MonitorElement* debug_me_residual_rphi_;
 
   MEMap me_strip_; // region-station-ieta
   MEMap me_strip_matched_; // region-station-ieta
@@ -98,6 +104,14 @@ private:
   // cosmics
   MonitorElement* debug_me_is_outgoing_;
   MonitorElement* debug_me_is_outgoing_matched_;
+
+  // 
+  MonitorElement* debug_me_norm_chi2_;
+  MonitorElement* debug_me_norm_chi2_matched_;
+
+  MonitorElement* debug_me_d0_sig_;
+  MonitorElement* debug_me_d0_sig_matched_;
+
 };
 
 inline bool GEMEfficiencyAnalyzer::isInsideOut(const reco::Track& track) {

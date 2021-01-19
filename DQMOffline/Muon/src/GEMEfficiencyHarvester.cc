@@ -32,7 +32,7 @@ TProfile* GEMEfficiencyHarvester::computeEfficiency(
   eff_profile->GetXaxis()->SetTitle(total_x->GetTitle());
   eff_profile->GetYaxis()->SetTitle("#epsilon");
 
-  for (int bin = 1; bin < total->GetNbinsX(); bin++) {
+  for (int bin = 1; bin <= total->GetNbinsX(); bin++) {
     double num_passed = passed->GetBinContent(bin);
     double num_total = total->GetBinContent(bin);
 
@@ -162,6 +162,12 @@ void GEMEfficiencyHarvester::doEfficiency(DQMStore::IBooker& ibooker, DQMStore::
       if (eff == nullptr) {
         edm::LogError(log_category_) << "failed to compute the efficiency " << key << std::endl;
         continue;
+      }
+
+      TAxis* x_total = h_total->GetXaxis();
+      TAxis* x_eff = eff->GetXaxis();
+      for (int binx = 1; binx <= h_total->GetNbinsX(); binx++) {
+        x_eff->SetBinLabel(binx, x_total->GetBinLabel(binx));
       }
 
       ibooker.bookProfile(name, eff);
