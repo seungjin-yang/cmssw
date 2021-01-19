@@ -429,18 +429,9 @@ void GEMEfficiencyAnalyzer::analyze(const edm::Event& event, const edm::EventSet
         continue;
       }
 
-      // TODO isME11
-      if (use_only_me11_) {
-          // TODO LogInfo
-        if (not MuonHitHelper::isCSC(start_id)) {
-          continue;
-        }
-
-        const CSCDetId csc_id{start_id};
-        if ((csc_id.station() != 1) or (csc_id.ring() != 1)) {
-          // TODO LogInfo
-          continue;
-        }
+      if (use_only_me11_ and (not isME11(start_id))) {
+        // TODO LogInfo
+        continue;
       }
 
       // trajectory state on the destination surface
@@ -711,6 +702,13 @@ GEMEfficiencyAnalyzer::findStartingState(
 }
 
 
+bool GEMEfficiencyAnalyzer::isME11(const DetId& det_id) {
+  if (not MuonHitHelper::isCSC(det_id)) return false;
+  const CSCDetId csc_id{det_id};
+  return (csc_id.station() == 1) or (csc_id.ring() == 1);
+}
+
+
 bool GEMEfficiencyAnalyzer::skipLayer(const reco::Track* track,
                                       const GEMLayerData& layer) {
   const bool is_same_region = track->eta() * layer.region > 0;
@@ -810,7 +808,7 @@ std::pair<const GEMRecHit*, float> GEMEfficiencyAnalyzer::findMatchedHit(
     const float residual_y = dest_local_y - hit_local_pos.y();
     const float residual_rphi = std::abs(std::cos(hit_local_phi) * residual_x + std::sin(hit_local_phi) * residual_y);
 
-    if (min_residual_rphi <= residual_rphi) {
+    if (residual_rphi < min_residual_rphi) {
       min_residual_rphi = residual_rphi;
       closest_hit = &(*hit);
     }

@@ -51,6 +51,7 @@ private:
   const reco::Track* getTrack(const reco::Muon&);
   std::pair<TrajectoryStateOnSurface, DetId> getStartingState(const reco::TransientTrack&, const GEMLayerData&, const edm::ESHandle<GlobalTrackingGeometry>&);
   std::pair<TrajectoryStateOnSurface, DetId> findStartingState(const reco::TransientTrack&, const GEMLayerData&, const edm::ESHandle<GlobalTrackingGeometry>&);
+  bool isME11(const DetId&);
   bool skipLayer(const reco::Track*, const GEMLayerData&);
   bool checkBounds(const GlobalPoint&, const Plane&);
   const GEMEtaPartition* findEtaPartition(const GlobalPoint&, const std::vector<const GEMChamber*>&);
