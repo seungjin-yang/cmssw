@@ -27,7 +27,7 @@ import EventFilter.RPCRawToDigi.RPCRawToDigi_cfi
 muonRPCDigis = EventFilter.RPCRawToDigi.RPCRawToDigi_cfi.muonRPCDigis.clone()
 
 import EventFilter.GEMRawToDigi.muonGEMDigis_cfi
-muonGEMDigis = EventFilter.GEMRawToDigi.muonGEMDigis_cfi.muonGEMDigis.clone()
+muonGEMDigiTask = EventFilter.GEMRawToDigi.muonGEMDigis_cfi.muonGEMDigiTask.clone()
 
 from EventFilter.CastorRawToDigi.CastorRawToDigi_cff import *
 castorDigis = EventFilter.CastorRawToDigi.CastorRawToDigi_cfi.castorDigis.clone( FEDs = cms.untracked.vint32(690,691,692, 693,722) )
@@ -103,7 +103,7 @@ ctpps_2016.toReplaceWith(RawToDigiTask_noTk, _ctpps_2016_RawToDigiTask_noTk)
 
 # GEM settings
 _gem_RawToDigiTask = RawToDigiTask.copy()
-_gem_RawToDigiTask.add(muonGEMDigis)
+_gem_RawToDigiTask.add(muonGEMDigiTask)
 
 from Configuration.Eras.Modifier_run2_GEM_2017_cff import run2_GEM_2017
 run2_GEM_2017.toReplaceWith(RawToDigiTask, _gem_RawToDigiTask)
